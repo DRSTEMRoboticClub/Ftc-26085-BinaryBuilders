@@ -6,6 +6,11 @@ import java.util.ArrayList;
 public class ColourMatcher {
     private ArrayList<Colour> m_colours;
 
+    public ColourMatcher()
+    {
+        m_colours = new ArrayList<>();
+    }
+
     public void AddColour(Colour newColour) {
         m_colours.add(newColour);
     }
