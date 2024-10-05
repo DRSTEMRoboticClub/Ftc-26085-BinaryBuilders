@@ -1,7 +1,7 @@
 package org.firstinspires.ftc.teamcode.TeleOp;
 
+import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
@@ -9,18 +9,20 @@ import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.Servo;
-import com.qualcomm.robotcore.hardware.ColorSensor;
+import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.hardware.ColorRangeSensor;
 import com.qualcomm.robotcore.hardware.NormalizedRGBA;
 import org.firstinspires.ftc.teamcode.tools.ColourMatcher;
+import org.firstinspires.ftc.teamcode.tools.MecanumDrivetrain;
+import org.firstinspires.ftc.teamcode.tools.ControlPad;
 
 @TeleOp
 public class TheWheelsOnTheBusOp extends LinearOpMode {
-    static int ARM_POSITION_SAMPLE = 300;
-    static int ARM_POSITION_POWER = 5;
-    static int WHEELS_FULL_VELOCITY = 1500;
-    static int SLIDE_FULL_SIZE = 1250;
-    static int SLIDE_POWER = 50;
+    static final int ARM_POSITION_SAMPLE = 300;
+    static final int ARM_POSITION_POWER = 5;
+    static final int SLIDE_FULL_SIZE = 1250;
+    static final int SLIDE_POWER = 50;
+    static final double TURN_RATE = Math.PI / 4; // 45 degrees each bumper hit
 
     // Devices
     // Motors
@@ -42,6 +44,12 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
     // Colour Matcher
     private ColourMatcher colourMatcher;
 
+    // Drivetrain
+    private MecanumDrivetrain driveTrain;
+
+    // Control pad
+    private ControlPad controlPad_1;
+
     // Initialise robot
     public void autoBotRollout() throws InterruptedException
     {
@@ -61,6 +69,15 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
 
         // Create Sensors
         colourSensor = (ColorRangeSensor) hardwareMap.colorSensor.get("ColourSensor");
+        IMU imuSensor = hardwareMap.get(IMU.class, "imu");
+        imuSensor.initialize(
+                new IMU.Parameters(
+                        new RevHubOrientationOnRobot(
+                                RevHubOrientationOnRobot.LogoFacingDirection.UP,
+                                RevHubOrientationOnRobot.UsbFacingDirection.FORWARD
+                        )
+                )
+        );
 
         // Initialisation
         // Initialise Servos
@@ -70,15 +87,19 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
         // Initialise Motors
         // Front left motor
         frontRightMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        frontRightMotor.setDirection(DcMotorSimple.Direction.REVERSE);
 
         // back right motor
         backRightMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        backRightMotor.setDirection(DcMotorSimple.Direction.REVERSE);
 
         // front left motor
         frontLeftMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        frontLeftMotor.setDirection(DcMotorSimple.Direction.REVERSE);
 
         // back left motor
         backLeftMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        backLeftMotor.setDirection(DcMotorSimple.Direction.FORWARD);
 
         // arm lifting motor
         armBottomMotor.setDirection(DcMotorSimple.Direction.REVERSE);
@@ -95,9 +116,16 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
         sliderMotorRight.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
 
         // Define the colours
+        colourMatcher = new ColourMatcher();
         colourMatcher.AddColour("Blue", 0.0, 0.0, 1.0, 1.0);
         colourMatcher.AddColour("Red", 1.0, 0.0, 0.0, 1.0);
         colourMatcher.AddColour("Yellow", 1.0, 1.0, 0.0, 1.0);
+
+        // drivetrain
+        driveTrain = new MecanumDrivetrain(telemetry, imuSensor, frontLeftMotor, frontRightMotor, backLeftMotor, backRightMotor);
+
+        // Control pad
+        controlPad_1 = new ControlPad(telemetry, gamepad1);
     }
 
     // Make the robot start grabbing samples from the pool
@@ -127,7 +155,6 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
         {
             telemetry.addData("Left", sliderMotorLeft.getCurrentPosition());
             telemetry.addData("Right", sliderMotorRight.getCurrentPosition());
-            telemetry.update();
         }
 
         // Turn the intake till a sample is collected
@@ -148,7 +175,7 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
         }
 
         // Pull back the linear slider
-
+        telemetry.update();
     }
 
     // Deliver the sample into the basket
@@ -196,33 +223,17 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
         while (opModeIsActive()) {
             double y = -gamepad1.left_stick_y; // Remember, Y stick value is reversed
             double x = gamepad1.left_stick_x * 1.1; // Counteract imperfect strafing
-            double rx = gamepad1.right_stick_x;
 
-
-            // Denominator is the largest motor power (absolute value) or 1
-            // This ensures all the powers maintain the same ratio,
-            // but only if at least one is out of the range [-1, 1]
-            double denominator = Math.max(Math.abs(y) + Math.abs(x) + Math.abs(rx), 1);
-            double frontLeftPower = (y + x + rx) / denominator;
-            double backLeftPower = (y - x + rx) / denominator;
-            double frontRightPower = (y - x - rx) / denominator;
-            double backRightPower = (y + x - rx) / denominator;
-
-            // scaling
-            double scaledFrontLeftPower = frontLeftPower * frontLeftPower * frontLeftPower;
-            double scaledBackLeftPower = backLeftPower * backLeftPower * backLeftPower;
-            double scaledFrontRightPower = frontRightPower * frontRightPower * frontRightPower;
-            double scaledBackRightPower = backRightPower * backRightPower * backRightPower;
-
-            frontLeftMotor.setVelocity(scaledFrontLeftPower*WHEELS_FULL_VELOCITY);
-            backLeftMotor.setVelocity(scaledBackLeftPower*WHEELS_FULL_VELOCITY);
-            frontRightMotor.setVelocity(scaledFrontRightPower*WHEELS_FULL_VELOCITY);
-            backRightMotor.setVelocity(scaledBackRightPower*WHEELS_FULL_VELOCITY);
-
-            if (gamepad1.left_bumper)
+            if (controlPad_1.is_left_bumper_pressed())
             {
-                //sampleRobbery();
+                driveTrain.turn_left(TURN_RATE);
             }
+            else if (controlPad_1.is_right_bumper_pressed())
+            {
+                driveTrain.turn_right(TURN_RATE);
+            }
+
+            driveTrain.run(x, y);
 
             if (frontRightMotor.getVelocity() > maxVelocityFrontRight)
             {
