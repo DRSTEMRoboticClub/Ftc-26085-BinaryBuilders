@@ -35,7 +35,7 @@ public class MecanumDrivetrain {
     public void turn_right(double radian)
     {
         direction += radian;
-        if (direction > Math.PI)
+        if (direction >= Math.PI)
         {
             direction -= Math.PI;
         }
@@ -44,7 +44,7 @@ public class MecanumDrivetrain {
     public void turn_left(double radian)
     {
         direction -= radian;
-        if (direction < -Math.PI)
+        if (direction <= -Math.PI)
         {
             direction += Math.PI;
         }
