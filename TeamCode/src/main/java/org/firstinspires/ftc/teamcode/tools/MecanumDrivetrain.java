@@ -1,6 +1,8 @@
 package org.firstinspires.ftc.teamcode.tools;
 
+import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
+import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.IMU;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
@@ -30,6 +32,24 @@ public class MecanumDrivetrain {
         imu = the_imu;
         imu.resetYaw();
         direction = 0;
+    }
+
+    public void initialise()
+    {
+        motorFrontRight.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        motorFrontRight.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+
+        // back right motor
+        motorRearRight.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        motorRearRight.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+
+        // front left motor
+        motorFrontLeft.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        motorFrontLeft.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+
+        // back left motor
+        motorRearLeft.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        motorRearLeft.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
     }
 
     public void turn_right(double radian)
