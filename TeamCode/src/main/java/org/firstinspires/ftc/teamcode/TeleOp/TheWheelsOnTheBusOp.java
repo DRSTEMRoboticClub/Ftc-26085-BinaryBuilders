@@ -24,16 +24,6 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
     static final int SLIDE_POWER = 50;
     static final double TURN_RATE = Math.PI / 4; // 45 degrees each bumper hit
 
-    // Devices
-    // Motors
-    private DcMotorEx frontLeftMotor;
-    private DcMotorEx backLeftMotor;
-    private DcMotorEx frontRightMotor;
-    private DcMotorEx backRightMotor;
-    private DcMotorEx armBottomMotor;
-    private DcMotorEx sliderMotorLeft;
-    private DcMotorEx sliderMotorRight;
-
     // Servos
     private Servo intakeAngleServo;
     private Servo intakeFlapWheelServo;
@@ -55,13 +45,19 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
     {
         // Declare our motors
         // Create motors
-        frontLeftMotor = (DcMotorEx)hardwareMap.dcMotor.get("MotorC");
-        backLeftMotor = (DcMotorEx)hardwareMap.dcMotor.get("MotorD");
-        frontRightMotor = (DcMotorEx)hardwareMap.dcMotor.get("MotorB");
-        backRightMotor = (DcMotorEx)hardwareMap.dcMotor.get("MotorA");
-        armBottomMotor = (DcMotorEx)hardwareMap.dcMotor.get("MotorE");
-        sliderMotorLeft = (DcMotorEx)hardwareMap.dcMotor.get("SliderMotorLeft");
-        sliderMotorRight = (DcMotorEx)hardwareMap.dcMotor.get("SliderMotorRight");
+        DcMotorEx frontLeftMotor = (DcMotorEx)hardwareMap.dcMotor.get("MotorC");
+        DcMotorEx backLeftMotor = (DcMotorEx)hardwareMap.dcMotor.get("MotorD");
+        DcMotorEx frontRightMotor = (DcMotorEx)hardwareMap.dcMotor.get("MotorB");
+        DcMotorEx backRightMotor = (DcMotorEx)hardwareMap.dcMotor.get("MotorA");
+        DcMotorEx armBottomMotor = (DcMotorEx)hardwareMap.dcMotor.get("MotorE");
+        DcMotorEx sliderMotorLeft = (DcMotorEx)hardwareMap.dcMotor.get("SliderMotorLeft");
+        DcMotorEx sliderMotorRight = (DcMotorEx)hardwareMap.dcMotor.get("SliderMotorRight");
+
+        // Set motor directions
+        frontLeftMotor.setDirection(DcMotorSimple.Direction.REVERSE);
+        backLeftMotor.setDirection(DcMotorSimple.Direction.FORWARD);
+        frontRightMotor.setDirection(DcMotorSimple.Direction.REVERSE);
+        backRightMotor.setDirection(DcMotorSimple.Direction.REVERSE);
 
         // Create servos
         intakeAngleServo = hardwareMap.servo.get("IntakeAngleServo");
@@ -84,23 +80,6 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
         intakeAngleServo.setPosition(1.0);
         intakeFlapWheelServo.setPosition(0.5);
 
-        // Initialise Motors
-        // Front left motor
-        frontRightMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-        frontRightMotor.setDirection(DcMotorSimple.Direction.REVERSE);
-
-        // back right motor
-        backRightMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-        backRightMotor.setDirection(DcMotorSimple.Direction.REVERSE);
-
-        // front left motor
-        frontLeftMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-        frontLeftMotor.setDirection(DcMotorSimple.Direction.REVERSE);
-
-        // back left motor
-        backLeftMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-        backLeftMotor.setDirection(DcMotorSimple.Direction.FORWARD);
-
         // arm lifting motor
         armBottomMotor.setDirection(DcMotorSimple.Direction.REVERSE);
         armBottomMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
@@ -115,14 +94,9 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
         sliderMotorRight.setDirection(DcMotorSimple.Direction.REVERSE);
         sliderMotorRight.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
 
-        // Define the colours
-        colourMatcher = new ColourMatcher();
-        colourMatcher.AddColour("Blue", 0.0, 0.0, 1.0, 1.0);
-        colourMatcher.AddColour("Red", 1.0, 0.0, 0.0, 1.0);
-        colourMatcher.AddColour("Yellow", 1.0, 1.0, 0.0, 1.0);
-
         // drivetrain
         driveTrain = new MecanumDrivetrain(telemetry, imuSensor, frontLeftMotor, frontRightMotor, backLeftMotor, backRightMotor);
+        driveTrain.initialise();
 
         // Control pad
         controlPad_1 = new ControlPad(telemetry, gamepad1);
@@ -132,30 +106,9 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
     public void sampleRobbery() throws InterruptedException {
 
         // Set the arm position to aim the pool
-        armBottomMotor.setTargetPosition(ARM_POSITION_SAMPLE);
-        armBottomMotor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
-        armBottomMotor.setPower(ARM_POSITION_POWER);
-        while (armBottomMotor.isBusy())
-        {
-            telemetry.addData("Position", armBottomMotor.getCurrentPosition());
-            telemetry.update();
-        }
 
         // Turn the intake to aim to the pool
         intakeAngleServo.setPosition(0.0);
-
-        // Extend the linear slider
-        sliderMotorLeft.setTargetPosition(SLIDE_FULL_SIZE);
-        sliderMotorRight.setTargetPosition(SLIDE_FULL_SIZE);
-        sliderMotorLeft.setMode(DcMotor.RunMode.RUN_TO_POSITION);
-        sliderMotorRight.setMode(DcMotor.RunMode.RUN_TO_POSITION);
-        sliderMotorLeft.setPower(SLIDE_POWER);
-        sliderMotorRight.setPower(SLIDE_POWER);
-        while (sliderMotorLeft.isBusy() || sliderMotorRight.isBusy())
-        {
-            telemetry.addData("Left", sliderMotorLeft.getCurrentPosition());
-            telemetry.addData("Right", sliderMotorRight.getCurrentPosition());
-        }
 
         // Turn the intake till a sample is collected
         intakeFlapWheelServo.setPosition(1.0);
@@ -234,31 +187,6 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
             }
 
             driveTrain.run(x, y);
-
-            if (frontRightMotor.getVelocity() > maxVelocityFrontRight)
-            {
-                maxVelocityFrontRight = frontRightMotor.getVelocity();
-            }
-
-            if (backRightMotor.getVelocity() > maxVelocityBackRight)
-            {
-                maxVelocityBackRight = backRightMotor.getVelocity();
-            }
-
-            if (frontLeftMotor.getVelocity() > maxVelocityFrontLeft)
-            {
-                maxVelocityFrontLeft = frontLeftMotor.getVelocity();
-            }
-
-            if (backLeftMotor.getVelocity() > maxVelocityBackLeft)
-            {
-                maxVelocityBackLeft = backLeftMotor.getVelocity();
-            }
-
-            telemetry.addData("FrontRight", maxVelocityFrontRight);
-            telemetry.addData("BackRight", maxVelocityBackRight);
-            telemetry.addData("FrontLeft", maxVelocityFrontLeft);
-            telemetry.addData("BackLeft", maxVelocityBackLeft);
 
             /*
             if (gamepad1.left_trigger > 0)

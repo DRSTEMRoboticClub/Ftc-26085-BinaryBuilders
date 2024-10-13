@@ -1,5 +1,7 @@
 package org.firstinspires.ftc.teamcode.tools;
 
+import com.qualcomm.robotcore.hardware.NormalizedRGBA;
+
 public class Colour {
     private final String m_name;
     private final double m_red;
@@ -7,12 +9,22 @@ public class Colour {
     private final double m_blue;
     private final double m_alpha;
 
-    public Colour(String name, double red, double green, double blue, double alpha) {
+    public Colour(String name, double red, double green, double blue, double alpha)
+    {
         m_name = name;
         m_red = red;
         m_green = green;
         m_blue = blue;
         m_alpha = alpha;
+    }
+
+    public Colour(NormalizedRGBA c)
+    {
+        m_name = "Unknown";
+        m_red = c.red;
+        m_green = c.green;
+        m_blue = c.blue;
+        m_alpha = c.alpha;
     }
 
     public double get_red() {
