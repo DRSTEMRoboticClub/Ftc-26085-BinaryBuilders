@@ -1,15 +1,14 @@
 package org.firstinspires.ftc.teamcode.TeleOp;
 
 import com.qualcomm.robotcore.hardware.ColorRangeSensor;
-import com.qualcomm.robotcore.hardware.Servo;
+import com.qualcomm.robotcore.hardware.DcMotor;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
-import org.firstinspires.ftc.teamcode.tools.Colour;
 import org.firstinspires.ftc.teamcode.tools.ColourMatcher;
 
 public class TheIntakOnTheBus {
-    private final Servo flapWheelServo;
+    private final DcMotor flapWheelMotor;
 
     private final ColorRangeSensor colourSensor;
 
@@ -29,9 +28,9 @@ public class TheIntakOnTheBus {
 
     private State state;
 
-    public TheIntakOnTheBus(Telemetry the_telemetry, Servo flap_servo, ColorRangeSensor sensor, String team_colour)
+    public TheIntakOnTheBus(Telemetry the_telemetry, DcMotor flap_servo, ColorRangeSensor sensor, String team_colour)
     {
-        flapWheelServo = flap_servo;
+        flapWheelMotor = flap_servo;
         colourSensor = sensor;
         telemetry = the_telemetry;
         teamColour = team_colour;
@@ -39,37 +38,50 @@ public class TheIntakOnTheBus {
 
     public void initialise()
     {
-        flapWheelServo.setPosition(0.5);
+        // State
         state = State.IDLE;
+
+        // Flap wheel
+        flapWheelMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        flapWheelMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+
         // Define the colours
         colourMatcher = new ColourMatcher();
-        colourMatcher.AddColour("Blue", 0.0, 0.0, 1.0, 1.0);
-        colourMatcher.AddColour("Red", 1.0, 0.0, 0.0, 1.0);
-        colourMatcher.AddColour("Yellow", 1.0, 1.0, 0.0, 1.0);
+        colourMatcher.AddColour("Blue", 50, 130, 400, 200);
+        colourMatcher.AddColour("Red", 340, 200, 120, 219);
+        colourMatcher.AddColour("Yellow", 500, 880, 250, 541);
     }
 
     public void grab()
     {
         state = State.GRABBING;
-        flapWheelServo.setPosition(1.0);
+        flapWheelMotor.setPower(1.0);
     }
 
     public void spit()
     {
         state = State.SPITTING;
-        flapWheelServo.setPosition(0.0);
+        flapWheelMotor.setPower(-1.0);
     }
 
-    public void check() throws InterruptedException {
+    public void update() throws InterruptedException {
+        telemetry.addData("Intake Range", colourSensor.getDistance(DistanceUnit.CM));
+        telemetry.addData("Intake Colour", colourMatcher.ClosestColour(colourSensor).get_name());
+        telemetry.addData("Intake Red:", colourSensor.red());
+        telemetry.addData("Intake Green:", colourSensor.green());
+        telemetry.addData("Intake Blue:", colourSensor.blue());
+        telemetry.addData("Intake Alpha:", colourSensor.alpha());
+
         switch (state)
         {
             case GRABBING:
                 if (colourSensor.getDistance(DistanceUnit.CM) < 3)
                 {
-                    flapWheelServo.setPosition(0.5);
-                    String closed_colour = colourMatcher.ClosestColour(new Colour(colourSensor.getNormalizedColors())).get_name();
+                    flapWheelMotor.setPower(0.0);
+                    String closed_colour = colourMatcher.ClosestColour(colourSensor).get_name();
                     if (closed_colour.equals(teamColour) || closed_colour.equals("Yellow"))
                     {
+                        telemetry.addData("Intake", "Grabbed");
                         state = State.GRABBED;
                     }
                     else
@@ -82,7 +94,7 @@ public class TheIntakOnTheBus {
                 if (colourSensor.getDistance(DistanceUnit.CM) > 3)
                 {
                     Thread.sleep(200);
-                    flapWheelServo.setPosition(0.5);
+                    flapWheelMotor.setPower(0.0);
                     state = State.IDLE;
                 }
                 break;

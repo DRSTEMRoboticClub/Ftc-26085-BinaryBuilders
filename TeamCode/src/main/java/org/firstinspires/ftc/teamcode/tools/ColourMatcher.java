@@ -1,5 +1,7 @@
 package org.firstinspires.ftc.teamcode.tools;
 
+import com.qualcomm.robotcore.hardware.ColorSensor;
+
 import org.firstinspires.ftc.teamcode.tools.Colour;
 import java.util.ArrayList;
 
@@ -15,12 +17,17 @@ public class ColourMatcher {
         m_colours.add(newColour);
     }
 
-    public void AddColour(String name, double red, double green, double blue, double alpha)
+    public void AddColour(String name, int red, int green, int blue, int alpha)
     {
         m_colours.add(new Colour(name, red, green, blue, alpha));
     }
 
-    public Colour ClosestColour(double red, double green, double blue, double alpha) {
+    public Colour ClosestColour(ColorSensor sensor)
+    {
+        return ClosestColour(sensor.red(), sensor.green(), sensor.blue(), sensor.alpha());
+    }
+
+    public Colour ClosestColour(int red, int green, int blue, int alpha) {
         return ClosestColour(new Colour("Unknown", red, green, blue, alpha));
     }
 

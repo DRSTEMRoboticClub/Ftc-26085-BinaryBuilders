@@ -26,19 +26,18 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
 
     // Servos
     private Servo intakeAngleServo;
-    private Servo intakeFlapWheelServo;
 
     // Sensors
     private ColorRangeSensor colourSensor;
-
-    // Colour Matcher
-    private ColourMatcher colourMatcher;
 
     // Drivetrain
     private MecanumDrivetrain driveTrain;
 
     // Control pad
     private ControlPad controlPad_1;
+
+    // Robot Arm
+    private TheArmOnTheBus missionArm;
 
     // Initialise robot
     public void autoBotRollout() throws InterruptedException
@@ -49,9 +48,10 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
         DcMotorEx backLeftMotor = (DcMotorEx)hardwareMap.dcMotor.get("MotorD");
         DcMotorEx frontRightMotor = (DcMotorEx)hardwareMap.dcMotor.get("MotorB");
         DcMotorEx backRightMotor = (DcMotorEx)hardwareMap.dcMotor.get("MotorA");
-        DcMotorEx armBottomMotor = (DcMotorEx)hardwareMap.dcMotor.get("MotorE");
-        DcMotorEx sliderMotorLeft = (DcMotorEx)hardwareMap.dcMotor.get("SliderMotorLeft");
-        DcMotorEx sliderMotorRight = (DcMotorEx)hardwareMap.dcMotor.get("SliderMotorRight");
+        DcMotorEx armSlideMotor = (DcMotorEx)hardwareMap.dcMotor.get("MotorE");
+        DcMotorEx armMotorLeft = (DcMotorEx)hardwareMap.dcMotor.get("MotorF");
+        DcMotorEx armMotorRight = (DcMotorEx)hardwareMap.dcMotor.get("MotorG");
+        DcMotor intakeFlapWheelMotor = hardwareMap.dcMotor.get("MotorH");
 
         // Set motor directions
         frontLeftMotor.setDirection(DcMotorSimple.Direction.REVERSE);
@@ -61,7 +61,6 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
 
         // Create servos
         intakeAngleServo = hardwareMap.servo.get("IntakeAngleServo");
-        intakeFlapWheelServo = hardwareMap.servo.get("IntakeSampleServo");
 
         // Create Sensors
         colourSensor = (ColorRangeSensor) hardwareMap.colorSensor.get("ColourSensor");
@@ -75,57 +74,22 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
                 )
         );
 
-        // Initialisation
-        // Initialise Servos
-        intakeAngleServo.setPosition(1.0);
-        intakeFlapWheelServo.setPosition(0.5);
-
-        // arm lifting motor
-        armBottomMotor.setDirection(DcMotorSimple.Direction.REVERSE);
-        armBottomMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        armBottomMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-
-        // slider motor left
-        sliderMotorLeft.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        sliderMotorLeft.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-
-        // slider motor right
-        sliderMotorRight.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        sliderMotorRight.setDirection(DcMotorSimple.Direction.REVERSE);
-        sliderMotorRight.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-
         // drivetrain
         driveTrain = new MecanumDrivetrain(telemetry, imuSensor, frontLeftMotor, frontRightMotor, backLeftMotor, backRightMotor);
         driveTrain.initialise();
 
         // Control pad
         controlPad_1 = new ControlPad(telemetry, gamepad1);
+
+        // mission arm
+        missionArm = new TheArmOnTheBus(telemetry, armMotorLeft, armMotorRight, armSlideMotor, intakeAngleServo, intakeFlapWheelMotor, colourSensor, "Red");
+        missionArm.initialise();
     }
 
     // Make the robot start grabbing samples from the pool
     public void sampleRobbery() throws InterruptedException {
 
         // Set the arm position to aim the pool
-
-        // Turn the intake to aim to the pool
-        intakeAngleServo.setPosition(0.0);
-
-        // Turn the intake till a sample is collected
-        intakeFlapWheelServo.setPosition(1.0);
-        while (colourSensor.getDistance(DistanceUnit.MM) > 50.0)
-        {
-            Thread.sleep(100);
-        }
-        intakeFlapWheelServo.setPosition(0.5);
-
-        // Check colour
-        NormalizedRGBA c = colourSensor.getNormalizedColors();
-        if (colourMatcher.ClosestColour(c.red, c.green, c.blue, c.alpha).get_name() == "Blue")
-        {
-            
-        } else if (colourMatcher.ClosestColour(c.red, c.green, c.blue, c.alpha).get_name() == "Red") {
-            
-        }
 
         // Pull back the linear slider
         telemetry.update();
@@ -170,8 +134,6 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
         double maxVelocityBackRight = 0.0;
         double maxVelocityBackLeft = 0.0;
 
-        //sliderMotorLeft.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-        //sliderMotorRight.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
 
         while (opModeIsActive()) {
             double y = -gamepad1.left_stick_y; // Remember, Y stick value is reversed
@@ -186,27 +148,17 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
                 driveTrain.turn_right(TURN_RATE);
             }
 
-            driveTrain.run(x, y);
+            if (gamepad1.left_bumper)
+            {
+                missionArm.move_arm(45);
+            }
+            if (gamepad1.right_bumper)
+            {
+                missionArm.move_arm(5);
+            }
 
-            /*
-            if (gamepad1.left_trigger > 0)
-            {
-                sliderMotorLeft.setVelocity(50);
-                sliderMotorRight.setVelocity(50);
-            }
-            else if (gamepad1.right_trigger > 0)
-            {
-                sliderMotorLeft.setVelocity(-50);
-                sliderMotorRight.setVelocity(-50);
-            }
-            else
-            {
-                sliderMotorLeft.setVelocity(0);
-                sliderMotorRight.setVelocity(0);
-            }
-            telemetry.addData("Left", sliderMotorLeft.getCurrentPosition());
-            telemetry.addData("Right", sliderMotorRight.getCurrentPosition());
-            */
+            //driveTrain.run(x, y);
+            missionArm.update();
             telemetry.update();
         }
     }
