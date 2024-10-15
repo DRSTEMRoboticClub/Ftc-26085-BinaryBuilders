@@ -7,7 +7,7 @@ import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.teamcode.tools.ColourMatcher;
 
-public class TheIntakOnTheBus {
+public class TheIntakOnTheArm {
     private final DcMotor flapWheelMotor;
 
     private final ColorRangeSensor colourSensor;
@@ -28,7 +28,7 @@ public class TheIntakOnTheBus {
 
     private State state;
 
-    public TheIntakOnTheBus(Telemetry the_telemetry, DcMotor flap_servo, ColorRangeSensor sensor, String team_colour)
+    public TheIntakOnTheArm(Telemetry the_telemetry, DcMotor flap_servo, ColorRangeSensor sensor, String team_colour)
     {
         flapWheelMotor = flap_servo;
         colourSensor = sensor;

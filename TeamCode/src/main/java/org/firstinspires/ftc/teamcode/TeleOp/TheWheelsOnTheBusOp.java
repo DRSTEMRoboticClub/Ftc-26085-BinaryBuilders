@@ -23,6 +23,7 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
     static final int SLIDE_FULL_SIZE = 1250;
     static final int SLIDE_POWER = 50;
     static final double TURN_RATE = Math.PI / 4; // 45 degrees each bumper hit
+    static final String teamColour = "Red";
 
     // Servos
     private Servo intakeAngleServo;
@@ -82,7 +83,7 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
         controlPad_1 = new ControlPad(telemetry, gamepad1);
 
         // mission arm
-        missionArm = new TheArmOnTheBus(telemetry, armMotorLeft, armMotorRight, armSlideMotor, intakeAngleServo, intakeFlapWheelMotor, colourSensor, "Red");
+        missionArm = new TheArmOnTheBus(telemetry, armMotorLeft, armMotorRight, armSlideMotor, intakeAngleServo, intakeFlapWheelMotor, colourSensor, teamColour);
         missionArm.initialise();
     }
 
@@ -157,7 +158,7 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
                 missionArm.move_arm(5);
             }
 
-            //driveTrain.run(x, y);
+            driveTrain.run(x, y);
             missionArm.update();
             telemetry.update();
         }

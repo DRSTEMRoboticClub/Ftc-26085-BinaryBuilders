@@ -37,10 +37,10 @@ public class TheArmOnTheBus {
         leftArmMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         leftArmMotor.setTargetPositionTolerance(5);
         leftArmMotor.setCurrentAlert(4.0, CurrentUnit.AMPS);
+        leftArmMotor.setDirection(DcMotorSimple.Direction.REVERSE);
         rightArmMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
         rightArmMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         rightArmMotor.setTargetPositionTolerance(5);
-        rightArmMotor.setDirection(DcMotorSimple.Direction.REVERSE);
         rightArmMotor.setCurrentAlert(4.0, CurrentUnit.AMPS);
         slideMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
         slideMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);

@@ -36,19 +36,19 @@ public class MecanumDrivetrain {
 
     public void initialise()
     {
-        motorFrontRight.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        motorFrontRight.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         motorFrontRight.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
 
         // back right motor
-        motorRearRight.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        motorRearRight.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         motorRearRight.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
 
         // front left motor
-        motorFrontLeft.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        motorFrontLeft.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         motorFrontLeft.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
 
         // back left motor
-        motorRearLeft.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        motorRearLeft.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         motorRearLeft.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
     }
 
@@ -97,9 +97,9 @@ public class MecanumDrivetrain {
         double scaledFrontRightPower = frontRightPower * frontRightPower * frontRightPower;
         double scaledBackRightPower = backRightPower * backRightPower * backRightPower;
 
-        motorFrontLeft.setVelocity(scaledFrontLeftPower*WHEELS_FULL_VELOCITY);
-        motorRearLeft.setVelocity(scaledBackLeftPower*WHEELS_FULL_VELOCITY);
-        motorFrontRight.setVelocity(scaledFrontRightPower*WHEELS_FULL_VELOCITY);
-        motorRearRight.setVelocity(scaledBackRightPower*WHEELS_FULL_VELOCITY);
+        motorFrontLeft.setPower(scaledFrontLeftPower);
+        motorRearLeft.setPower(scaledBackLeftPower);
+        motorFrontRight.setPower(scaledFrontRightPower);
+        motorRearRight.setPower(scaledBackRightPower);
     }
 }
