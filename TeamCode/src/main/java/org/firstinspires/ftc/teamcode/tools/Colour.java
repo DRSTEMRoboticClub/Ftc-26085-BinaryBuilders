@@ -1,45 +1,46 @@
 package org.firstinspires.ftc.teamcode.tools;
 
+import com.qualcomm.robotcore.hardware.ColorSensor;
 import com.qualcomm.robotcore.hardware.NormalizedRGBA;
 
 public class Colour {
     private final String m_name;
-    private final double m_red;
-    private final double m_green;
-    private final double m_blue;
-    private final double m_alpha;
+    private final float m_red;
+    private final float m_green;
+    private final float m_blue;
+    private final float m_alpha;
 
-    public Colour(String name, double red, double green, double blue, double alpha)
+    public Colour(String name, int red, int green, int blue, int alpha)
     {
         m_name = name;
-        m_red = red;
-        m_green = green;
-        m_blue = blue;
-        m_alpha = alpha;
+        m_red = (float)red / alpha;
+        m_green = (float)green / alpha;
+        m_blue = (float)blue / alpha;
+        m_alpha = 1.f;
     }
 
-    public Colour(NormalizedRGBA c)
+    public Colour(ColorSensor c)
     {
         m_name = "Unknown";
-        m_red = c.red;
-        m_green = c.green;
-        m_blue = c.blue;
-        m_alpha = c.alpha;
+        m_red = (float)c.red() / c.alpha();
+        m_green = (float)c.green() / c.alpha();
+        m_blue = (float)c.blue() / c.alpha();
+        m_alpha = 1.f;
     }
 
-    public double get_red() {
+    public float get_red() {
         return m_red;
     }
 
-    public double get_green() {
+    public float get_green() {
         return m_green;
     }
 
-    public double get_blue() {
+    public float get_blue() {
         return m_blue;
     }
 
-    public double get_alpha() {
+    public float get_alpha() {
         return m_alpha;
     }
 
@@ -47,16 +48,10 @@ public class Colour {
         return m_name;
     }
 
-    public double get_difference(double red, double green, double blue, double alpha) {
-        red /= alpha;
-        green /= alpha;
-        blue /= alpha;
-        double my_red = m_red / m_alpha;
-        double my_green = m_green / m_alpha;
-        double my_blue = m_blue / m_alpha;
-        return Math.max((red - my_red)*(red - my_red), (red - my_red - alpha + m_alpha)*(red - my_red - alpha + m_alpha))
-                + Math.max((green - my_green)*(green - my_green), (green - my_green - alpha + m_alpha)*(green - my_green - alpha + m_alpha))
-                + Math.max((blue - my_blue)*(blue - my_blue), (blue - my_blue - alpha + m_alpha)*(blue - my_blue - alpha + m_alpha));
+    public double get_difference(float red, float green, float blue, float alpha) {
+        return Math.max((red - m_red)*(red - m_red), (red - m_red - alpha + m_alpha)*(red - m_red - alpha + m_alpha))
+                + Math.max((green - m_green)*(green - m_green), (green - m_green - alpha + m_alpha)*(green - m_green - alpha + m_alpha))
+                + Math.max((blue - m_blue)*(blue - m_blue), (blue - m_blue - alpha + m_alpha)*(blue - m_blue - alpha + m_alpha));
     }
 
     public double get_difference(Colour otherColour) {
