@@ -37,19 +37,19 @@ public class MecanumDrivetrain {
     public void initialise()
     {
         motorFrontRight.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        motorFrontRight.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+        motorFrontRight.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
 
         // back right motor
         motorRearRight.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        motorRearRight.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+        motorRearRight.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
 
         // front left motor
         motorFrontLeft.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        motorFrontLeft.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+        motorFrontLeft.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
 
         // back left motor
         motorRearLeft.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        motorRearLeft.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+        motorRearLeft.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
     }
 
     public void turn_right(double radian)

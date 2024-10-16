@@ -8,6 +8,7 @@ import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
+import com.qualcomm.robotcore.hardware.Gamepad;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.hardware.ColorRangeSensor;
@@ -18,10 +19,6 @@ import org.firstinspires.ftc.teamcode.tools.ControlPad;
 
 @TeleOp
 public class TheWheelsOnTheBusOp extends LinearOpMode {
-    static final int ARM_POSITION_SAMPLE = 300;
-    static final int ARM_POSITION_POWER = 5;
-    static final int SLIDE_FULL_SIZE = 1250;
-    static final int SLIDE_POWER = 50;
     static final double TURN_RATE = Math.PI / 4; // 45 degrees each bumper hit
     static final String teamColour = "Red";
 
@@ -142,20 +139,24 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
 
             if (controlPad_1.is_left_bumper_pressed())
             {
-                driveTrain.turn_left(TURN_RATE);
+                missionArm.lift_arm(135);
+                Thread.sleep(1000);
+                missionArm.extend_arm(1.0f);
             }
             else if (controlPad_1.is_right_bumper_pressed())
             {
-                driveTrain.turn_right(TURN_RATE);
+                missionArm.extend_arm(0.0f);
+                Thread.sleep(1000);
+                missionArm.lift_arm(0);
             }
 
-            if (gamepad1.left_bumper)
+            if (controlPad_1.right_joystick_x() == ControlPad.JoyStickStatus.LEFT)
             {
-                missionArm.move_arm(45);
+                driveTrain.turn_left(TURN_RATE);
             }
-            if (gamepad1.right_bumper)
+            if (controlPad_1.right_joystick_x() == ControlPad.JoyStickStatus.RIGHT)
             {
-                missionArm.move_arm(5);
+                driveTrain.turn_right(TURN_RATE);
             }
 
             driveTrain.run(x, y);
