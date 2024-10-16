@@ -8,6 +8,16 @@ public class ControlPad {
 
     private boolean left_bumper_ready = true;
     private boolean right_bumper_ready = true;
+    private boolean right_joystick_ready = true;
+
+    public enum JoyStickStatus
+    {
+        LEFT,
+        RIGHT,
+        UP,
+        DOWN,
+        CENTRE
+    }
 
     public ControlPad(Telemetry the_telemetry, Gamepad the_gamepad)
     {
@@ -54,4 +64,25 @@ public class ControlPad {
         }
         return false;
     }
+
+    public JoyStickStatus right_joystick_x()
+    {
+        JoyStickStatus status = JoyStickStatus.CENTRE;
+        if (right_joystick_ready && gamepad.right_stick_x > 0.5)
+        {
+            status = JoyStickStatus.RIGHT;
+            right_joystick_ready = false;
+        }
+        else if (right_joystick_ready && gamepad.right_stick_x < -0.5)
+        {
+            status = JoyStickStatus.LEFT;
+            right_joystick_ready = false;
+        }
+        else if (gamepad.right_stick_x == 0.0)
+        {
+            right_joystick_ready = true;
+        }
+        return status;
+    }
+
 }

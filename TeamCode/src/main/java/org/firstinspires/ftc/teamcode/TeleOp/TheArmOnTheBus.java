@@ -16,9 +16,11 @@ public class TheArmOnTheBus {
     private final Servo intakeServo;
 
     private final Telemetry telemetry;
-    private TheIntakOnTheBus intake;
+    private TheIntakOnTheArm intake;
 
-    private final int MAX_SLIDE = 2150;
+    private final int MAX_SLIDE = 3650;
+    private final int MIN_SLIDE = 5;
+    private final int ARM_MOTOR_MIN_ENCODE = 5;
     private final int ARM_MOTOR_ENCODE_COUNT = (int)Math.round(288.0 / 15 * 72);
 
     public TheArmOnTheBus(Telemetry the_telemetry, DcMotorEx left_arm_motor, DcMotorEx right_arm_motor, DcMotorEx slide_motor, Servo intake_servo, DcMotor intake_motor, ColorRangeSensor color_sensor, String teamColour)
@@ -28,7 +30,7 @@ public class TheArmOnTheBus {
         rightArmMotor = right_arm_motor;
         slideMotor = slide_motor;
         intakeServo = intake_servo;
-        intake = new TheIntakOnTheBus(the_telemetry, intake_motor, color_sensor, teamColour);
+        intake = new TheIntakOnTheArm(the_telemetry, intake_motor, color_sensor, teamColour);
     }
 
     public void initialise()
@@ -44,15 +46,15 @@ public class TheArmOnTheBus {
         rightArmMotor.setCurrentAlert(4.0, CurrentUnit.AMPS);
         slideMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
         slideMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        slideMotor.setTargetPositionTolerance(10);
+        slideMotor.setTargetPositionTolerance(20);
         slideMotor.setCurrentAlert(8.0, CurrentUnit.AMPS);
         slideMotor.setDirection(DcMotorSimple.Direction.REVERSE);
         intake.initialise();
     }
 
-    public void move_arm(float angle)
+    public void lift_arm(float angle)
     {
-        int targetArmPosition = Math.round(angle / 360 * ARM_MOTOR_ENCODE_COUNT);
+        int targetArmPosition = Math.max(ARM_MOTOR_MIN_ENCODE, Math.round(angle / 360 * ARM_MOTOR_ENCODE_COUNT));
         leftArmMotor.setTargetPosition(targetArmPosition);
         rightArmMotor.setTargetPosition(targetArmPosition);
         leftArmMotor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
@@ -61,9 +63,9 @@ public class TheArmOnTheBus {
         rightArmMotor.setPower(1.0);
     }
 
-    public void expand_arm(float percentage)
+    public void extend_arm(float percentage)
     {
-        int slide_target = Math.round(percentage * MAX_SLIDE);
+        int slide_target = Math.max(Math.round(percentage * MAX_SLIDE), MIN_SLIDE);
         slideMotor.setTargetPosition(slide_target);
         slideMotor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
         slideMotor.setPower(1.0);
@@ -74,7 +76,10 @@ public class TheArmOnTheBus {
         intake.update();
         telemetry.addData("LeftMotorCurrent", leftArmMotor.getCurrent(CurrentUnit.AMPS));
         telemetry.addData("RightMotorCurrent", rightArmMotor.getCurrent(CurrentUnit.AMPS));
-        /*
+        telemetry.addData("SlideMotorCurrent", slideMotor.getCurrent(CurrentUnit.AMPS));
+        telemetry.addData("LeftMotorSteps", leftArmMotor.getCurrentPosition());
+        telemetry.addData("RightMotorSteps", rightArmMotor.getCurrentPosition());
+        telemetry.addData("SlideMotorSteps", slideMotor.getCurrentPosition());
         if (leftArmMotor.isOverCurrent() || leftArmMotor.isOverCurrent())
         {
             telemetry.addData("Alert", "Arm Motor Over Current");
@@ -86,7 +91,15 @@ public class TheArmOnTheBus {
             telemetry.addData("Alert", "Slide Motor Over Current");
             slideMotor.setPower(0.0);
         }
+    }
 
-         */
+    public boolean is_arm_lift_finished()
+    {
+        return !leftArmMotor.isBusy() && !rightArmMotor.isBusy();
+    }
+
+    public boolean is_arm_extend_finished()
+    {
+        return !slideMotor.isBusy();
     }
 }
