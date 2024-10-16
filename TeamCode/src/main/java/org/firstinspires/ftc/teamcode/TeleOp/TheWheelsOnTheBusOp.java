@@ -150,11 +150,12 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
                 missionArm.lift_arm(0);
             }
 
-            if (controlPad_1.right_joystick_x() == ControlPad.JoyStickStatus.LEFT)
+            ControlPad.JoyStickStatus right_joy_stick = controlPad_1.right_joystick_x();
+            if (right_joy_stick == ControlPad.JoyStickStatus.LEFT)
             {
                 driveTrain.turn_left(TURN_RATE);
             }
-            if (controlPad_1.right_joystick_x() == ControlPad.JoyStickStatus.RIGHT)
+            if (right_joy_stick == ControlPad.JoyStickStatus.RIGHT)
             {
                 driveTrain.turn_right(TURN_RATE);
             }
