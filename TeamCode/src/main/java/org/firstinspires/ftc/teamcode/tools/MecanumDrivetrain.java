@@ -55,18 +55,18 @@ public class MecanumDrivetrain {
     public void turn_right(double radian)
     {
         direction += radian;
-        if (direction >= Math.PI)
+        if (direction > Math.PI)
         {
-            direction -= Math.PI;
+            direction -= (Math.PI * 2);
         }
     }
 
     public void turn_left(double radian)
     {
         direction -= radian;
-        if (direction <= -Math.PI)
+        if (direction < -Math.PI)
         {
-            direction += Math.PI;
+            direction += (Math.PI * 2);
         }
     }
 
@@ -75,7 +75,16 @@ public class MecanumDrivetrain {
         // get yaw angle
         // lock robot heading to the reset direction
         double yaw = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS);
-        double rx = 5.0 * (direction + yaw);
+        double rx = direction + yaw;
+        if (rx > Math.PI)
+        {
+            rx -= Math.PI * 2;
+        }
+        else if (rx < -Math.PI)
+        {
+            rx += Math.PI * 2;
+        }
+        rx *= 2.5;
         telemetry.addData("Heading", Math.toDegrees(yaw));
         telemetry.addData("Target Heading", Math.toDegrees(direction));
 
@@ -91,15 +100,27 @@ public class MecanumDrivetrain {
         double frontRightPower = (y - x - rx) / denominator;
         double backRightPower = (y + x - rx) / denominator;
 
+        final int FRONT_LEFT_FULL_VELOCITY = 2300;
+        final int FRONT_RIGHT_FULL_VELOCITY = 2400;
+        final int BACK_LEFT_FULL_VELOCITY = 2450;
+        final int BACK_RIGHT_FULL_VELOCITY = 2550;
+        final int MINIMUM_FULL_VELOCITY = Math.min(FRONT_LEFT_FULL_VELOCITY, Math.min(FRONT_RIGHT_FULL_VELOCITY, Math.min(BACK_LEFT_FULL_VELOCITY, BACK_RIGHT_FULL_VELOCITY)));
+
+
         // scaling
-        double scaledFrontLeftPower = frontLeftPower * frontLeftPower * frontLeftPower;
-        double scaledBackLeftPower = backLeftPower * backLeftPower * backLeftPower;
-        double scaledFrontRightPower = frontRightPower * frontRightPower * frontRightPower;
-        double scaledBackRightPower = backRightPower * backRightPower * backRightPower;
+        double scaledFrontLeftPower = frontLeftPower * frontLeftPower * frontLeftPower * MINIMUM_FULL_VELOCITY / FRONT_LEFT_FULL_VELOCITY ;
+        double scaledBackLeftPower = backLeftPower * backLeftPower * backLeftPower * MINIMUM_FULL_VELOCITY / BACK_LEFT_FULL_VELOCITY;
+        double scaledFrontRightPower = frontRightPower * frontRightPower * frontRightPower * MINIMUM_FULL_VELOCITY / FRONT_RIGHT_FULL_VELOCITY;
+        double scaledBackRightPower = backRightPower * backRightPower * backRightPower * MINIMUM_FULL_VELOCITY / BACK_RIGHT_FULL_VELOCITY;
 
         motorFrontLeft.setPower(scaledFrontLeftPower);
         motorRearLeft.setPower(scaledBackLeftPower);
         motorFrontRight.setPower(scaledFrontRightPower);
         motorRearRight.setPower(scaledBackRightPower);
+
+        telemetry.addData("FrontLeftWheelVelocity", motorFrontLeft.getVelocity());
+        telemetry.addData("FrontRightWheelVelocity", motorFrontRight.getVelocity());
+        telemetry.addData("BackLeftWheelVelocity", motorRearLeft.getVelocity());
+        telemetry.addData("BackRightWheelVelocity", motorRearRight.getVelocity());
     }
 }

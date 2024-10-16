@@ -68,6 +68,7 @@ public class ControlPad {
     public JoyStickStatus right_joystick_x()
     {
         JoyStickStatus status = JoyStickStatus.CENTRE;
+
         if (right_joystick_ready && gamepad.right_stick_x > 0.5)
         {
             status = JoyStickStatus.RIGHT;
@@ -82,6 +83,7 @@ public class ControlPad {
         {
             right_joystick_ready = true;
         }
+
         return status;
     }
 
