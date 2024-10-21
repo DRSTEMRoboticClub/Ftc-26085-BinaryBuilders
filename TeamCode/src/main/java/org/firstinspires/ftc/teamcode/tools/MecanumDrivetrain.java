@@ -106,21 +106,27 @@ public class MecanumDrivetrain {
         final int BACK_RIGHT_FULL_VELOCITY = 2550;
         final int MINIMUM_FULL_VELOCITY = Math.min(FRONT_LEFT_FULL_VELOCITY, Math.min(FRONT_RIGHT_FULL_VELOCITY, Math.min(BACK_LEFT_FULL_VELOCITY, BACK_RIGHT_FULL_VELOCITY)));
 
-
         // scaling
         double scaledFrontLeftPower = frontLeftPower * frontLeftPower * frontLeftPower * MINIMUM_FULL_VELOCITY / FRONT_LEFT_FULL_VELOCITY ;
         double scaledBackLeftPower = backLeftPower * backLeftPower * backLeftPower * MINIMUM_FULL_VELOCITY / BACK_LEFT_FULL_VELOCITY;
         double scaledFrontRightPower = frontRightPower * frontRightPower * frontRightPower * MINIMUM_FULL_VELOCITY / FRONT_RIGHT_FULL_VELOCITY;
         double scaledBackRightPower = backRightPower * backRightPower * backRightPower * MINIMUM_FULL_VELOCITY / BACK_RIGHT_FULL_VELOCITY;
 
+        telemetry.addData("FrontLeftWheelPower", scaledFrontLeftPower);
+        telemetry.addData("FrontRightWheelPower", scaledFrontRightPower);
+        telemetry.addData("BackLeftWheelPower", scaledBackLeftPower);
+        telemetry.addData("BackRightWheelPower", scaledBackRightPower);
+
         motorFrontLeft.setPower(scaledFrontLeftPower);
         motorRearLeft.setPower(scaledBackLeftPower);
         motorFrontRight.setPower(scaledFrontRightPower);
         motorRearRight.setPower(scaledBackRightPower);
-
+/*
         telemetry.addData("FrontLeftWheelVelocity", motorFrontLeft.getVelocity());
         telemetry.addData("FrontRightWheelVelocity", motorFrontRight.getVelocity());
         telemetry.addData("BackLeftWheelVelocity", motorRearLeft.getVelocity());
         telemetry.addData("BackRightWheelVelocity", motorRearRight.getVelocity());
+
+ */
     }
 }
