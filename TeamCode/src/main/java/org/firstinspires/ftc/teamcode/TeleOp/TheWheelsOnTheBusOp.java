@@ -8,6 +8,7 @@ import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
+import com.qualcomm.robotcore.hardware.DistanceSensor;
 import com.qualcomm.robotcore.hardware.Gamepad;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.IMU;
@@ -50,6 +51,8 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
         DcMotorEx armMotorLeft = (DcMotorEx)hardwareMap.dcMotor.get("MotorF");
         DcMotorEx armMotorRight = (DcMotorEx)hardwareMap.dcMotor.get("MotorG");
         DcMotor intakeFlapWheelMotor = hardwareMap.dcMotor.get("MotorH");
+        DistanceSensor sensorLeft = hardwareMap.get(DistanceSensor.class, "DistanceL");
+        DistanceSensor sensorRight = hardwareMap.get(DistanceSensor.class, "DistanceR");
 
         // Set motor directions
         frontLeftMotor.setDirection(DcMotorSimple.Direction.REVERSE);
@@ -73,7 +76,7 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
         );
 
         // drivetrain
-        driveTrain = new MecanumDrivetrain(telemetry, imuSensor, frontLeftMotor, frontRightMotor, backLeftMotor, backRightMotor);
+        driveTrain = new MecanumDrivetrain(telemetry, imuSensor, frontLeftMotor, frontRightMotor, backLeftMotor, backRightMotor, sensorLeft, sensorRight);
         driveTrain.initialise();
 
         // Control pad
