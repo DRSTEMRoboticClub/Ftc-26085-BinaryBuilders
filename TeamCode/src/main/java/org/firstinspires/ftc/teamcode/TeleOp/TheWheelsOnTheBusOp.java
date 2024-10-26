@@ -2,19 +2,15 @@ package org.firstinspires.ftc.teamcode.TeleOp;
 
 import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.DistanceSensor;
-import com.qualcomm.robotcore.hardware.Gamepad;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.hardware.ColorRangeSensor;
-import com.qualcomm.robotcore.hardware.NormalizedRGBA;
-import org.firstinspires.ftc.teamcode.tools.ColourMatcher;
 import org.firstinspires.ftc.teamcode.tools.MecanumDrivetrain;
 import org.firstinspires.ftc.teamcode.tools.ControlPad;
 
@@ -22,6 +18,14 @@ import org.firstinspires.ftc.teamcode.tools.ControlPad;
 public class TheWheelsOnTheBusOp extends LinearOpMode {
     static final double TURN_RATE = Math.PI / 4; // 45 degrees each bumper hit
     static final String teamColour = "Red";
+
+    enum State
+    {
+        READY,
+        ROBBERY,
+        ROBBED,
+        DELIVERING
+    }
 
     // Servos
     private Servo intakeAngleServo;
@@ -37,6 +41,8 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
 
     // Robot Arm
     private TheArmOnTheBus missionArm;
+
+    private State state;
 
     // Initialise robot
     public void autoBotRollout() throws InterruptedException
@@ -85,15 +91,24 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
         // mission arm
         missionArm = new TheArmOnTheBus(telemetry, armMotorLeft, armMotorRight, armSlideMotor, intakeAngleServo, intakeFlapWheelMotor, colourSensor, teamColour);
         missionArm.initialise();
+
+        state = State.READY;
     }
 
     // Make the robot start grabbing samples from the pool
     public void sampleRobbery() throws InterruptedException {
+        missionArm.lift_arm(21);
+        missionArm.extend_arm(0.17f);
+        missionArm.intake_down();
+        state = State.ROBBERY;
+    }
 
-        // Set the arm position to aim the pool
-
-        // Pull back the linear slider
-        telemetry.update();
+    // Make the robot start grabbing samples from the pool
+    public void cancelRobbery() throws InterruptedException {
+        missionArm.intake_up();
+        missionArm.extend_arm(0.0f);
+        missionArm.lift_arm(0);
+        state = State.READY;
     }
 
     // Deliver the sample into the basket
@@ -142,15 +157,12 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
 
             if (controlPad_1.is_left_bumper_pressed())
             {
-                missionArm.lift_arm(135);
-                Thread.sleep(1000);
-                missionArm.extend_arm(1.0f);
+                sampleRobbery();
             }
-            else if (controlPad_1.is_right_bumper_pressed())
+
+            if (controlPad_1.is_right_bumper_pressed())
             {
-                missionArm.extend_arm(0.0f);
-                Thread.sleep(1000);
-                missionArm.lift_arm(0);
+                cancelRobbery();
             }
 
             ControlPad.JoyStickStatus right_joy_stick = controlPad_1.right_joystick_x();
@@ -163,7 +175,18 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
                 driveTrain.turn_right(TURN_RATE);
             }
 
-            driveTrain.run(x, y);
+
+            switch (state)
+            {
+                case ROBBERY:
+                    if (missionArm.getState() == TheIntakOnTheArm.State.GRABBED)
+                    {
+                        state = State.ROBBED;
+                    }
+                    break;
+            }
+
+            driveTrain.run(x, y, 1.0);
             missionArm.update();
             telemetry.update();
         }

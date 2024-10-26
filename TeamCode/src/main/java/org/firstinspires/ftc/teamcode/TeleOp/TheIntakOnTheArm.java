@@ -2,6 +2,7 @@ package org.firstinspires.ftc.teamcode.TeleOp;
 
 import com.qualcomm.robotcore.hardware.ColorRangeSensor;
 import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.DcMotorSimple;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
@@ -18,13 +19,18 @@ public class TheIntakOnTheArm {
 
     private final String teamColour;
 
-    private enum State
+    public enum State
     {
         IDLE,
         GRABBING,
         SPITTING,
         GRABBED
     };
+
+    public State getState()
+    {
+        return state;
+    }
 
     private State state;
 
@@ -42,7 +48,8 @@ public class TheIntakOnTheArm {
         state = State.IDLE;
 
         // Flap wheel
-        flapWheelMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        flapWheelMotor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        flapWheelMotor.setDirection(DcMotorSimple.Direction.REVERSE);
         flapWheelMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
 
         // Define the colours
@@ -64,6 +71,12 @@ public class TheIntakOnTheArm {
         flapWheelMotor.setPower(-1.0);
     }
 
+    public void stop()
+    {
+        state = State.IDLE;
+        flapWheelMotor.setPower(0.f);
+    }
+
     public void update() throws InterruptedException {
         telemetry.addData("Intake Range", colourSensor.getDistance(DistanceUnit.CM));
         telemetry.addData("Intake Colour", colourMatcher.ClosestColour(colourSensor).get_name());
@@ -77,12 +90,13 @@ public class TheIntakOnTheArm {
             case GRABBING:
                 if (colourSensor.getDistance(DistanceUnit.CM) < 3)
                 {
-                    flapWheelMotor.setPower(0.0);
                     String closed_colour = colourMatcher.ClosestColour(colourSensor).get_name();
                     if (closed_colour.equals(teamColour) || closed_colour.equals("Yellow"))
                     {
                         telemetry.addData("Intake", "Grabbed");
                         state = State.GRABBED;
+                        Thread.sleep(1000);
+                        flapWheelMotor.setPower(0.0);
                     }
                     else
                     {
@@ -93,9 +107,10 @@ public class TheIntakOnTheArm {
             case SPITTING:
                 if (colourSensor.getDistance(DistanceUnit.CM) > 3)
                 {
-                    Thread.sleep(200);
+                    Thread.sleep(1000);
                     flapWheelMotor.setPower(0.0);
                     state = State.IDLE;
+                    grab();
                 }
                 break;
         }

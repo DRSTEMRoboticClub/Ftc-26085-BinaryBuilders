@@ -14,6 +14,7 @@ public class TheArmOnTheBus {
     private final DcMotorEx rightArmMotor;
     private final DcMotorEx slideMotor;
     private final Servo intakeServo;
+    private float servoPosition;
 
     private final Telemetry telemetry;
     private TheIntakOnTheArm intake;
@@ -30,6 +31,7 @@ public class TheArmOnTheBus {
         rightArmMotor = right_arm_motor;
         slideMotor = slide_motor;
         intakeServo = intake_servo;
+        servoPosition = 1.f;
         intake = new TheIntakOnTheArm(the_telemetry, intake_motor, color_sensor, teamColour);
     }
 
@@ -49,6 +51,7 @@ public class TheArmOnTheBus {
         slideMotor.setTargetPositionTolerance(20);
         slideMotor.setCurrentAlert(8.0, CurrentUnit.AMPS);
         slideMotor.setDirection(DcMotorSimple.Direction.REVERSE);
+        servoPosition = 1.f;
         intake.initialise();
     }
 
@@ -71,8 +74,25 @@ public class TheArmOnTheBus {
         slideMotor.setPower(1.0);
     }
 
+    public TheIntakOnTheArm.State getState()
+    {
+        return intake.getState();
+    }
+
+    public void intake_down()
+    {
+        servoPosition = 0.f;
+        intake.grab();
+    }
+
+    public void intake_up()
+    {
+        intake.stop();
+        servoPosition = 1.f;
+    }
     public void update() throws InterruptedException
     {
+        intakeServo.setPosition(servoPosition);
         intake.update();
         telemetry.addData("LeftMotorCurrent", leftArmMotor.getCurrent(CurrentUnit.AMPS));
         telemetry.addData("RightMotorCurrent", rightArmMotor.getCurrent(CurrentUnit.AMPS));
