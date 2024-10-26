@@ -75,7 +75,7 @@ public class MecanumDrivetrain {
         }
     }
 
-    public void run(double x, double y)
+    public void run(double x, double y, double speed)
     {
         // get yaw angle
         // lock robot heading to the reset direction
@@ -112,10 +112,10 @@ public class MecanumDrivetrain {
         final int MINIMUM_FULL_VELOCITY = Math.min(FRONT_LEFT_FULL_VELOCITY, Math.min(FRONT_RIGHT_FULL_VELOCITY, Math.min(BACK_LEFT_FULL_VELOCITY, BACK_RIGHT_FULL_VELOCITY)));
 
         // scaling
-        double scaledFrontLeftPower = frontLeftPower * MINIMUM_FULL_VELOCITY / FRONT_LEFT_FULL_VELOCITY ;
-        double scaledBackLeftPower = backLeftPower * MINIMUM_FULL_VELOCITY / BACK_LEFT_FULL_VELOCITY;
-        double scaledFrontRightPower = frontRightPower * MINIMUM_FULL_VELOCITY / FRONT_RIGHT_FULL_VELOCITY;
-        double scaledBackRightPower = backRightPower * MINIMUM_FULL_VELOCITY / BACK_RIGHT_FULL_VELOCITY;
+        double scaledFrontLeftPower = frontLeftPower * MINIMUM_FULL_VELOCITY / FRONT_LEFT_FULL_VELOCITY * speed;
+        double scaledBackLeftPower = backLeftPower * MINIMUM_FULL_VELOCITY / BACK_LEFT_FULL_VELOCITY * speed;
+        double scaledFrontRightPower = frontRightPower * MINIMUM_FULL_VELOCITY / FRONT_RIGHT_FULL_VELOCITY * speed;
+        double scaledBackRightPower = backRightPower * MINIMUM_FULL_VELOCITY / BACK_RIGHT_FULL_VELOCITY * speed;
 
         telemetry.addData("FrontLeftWheelPower", scaledFrontLeftPower);
         telemetry.addData("FrontRightWheelPower", scaledFrontRightPower);
