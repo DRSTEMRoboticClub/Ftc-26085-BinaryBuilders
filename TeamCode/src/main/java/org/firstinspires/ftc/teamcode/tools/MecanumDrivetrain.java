@@ -135,17 +135,27 @@ public class MecanumDrivetrain {
  */
     }
 
-    public void corner(double corner_distance, double tolerance)
+    public void corner(double corner_distance, double tolerance, float speed)
     {
         while (true) {
             double left_distance = 1000;
-            while (left_distance >= 1000) {
+            int attempts = 100;
+            while (attempts > 0 && left_distance >= 1000) {
                 left_distance = distanceSensorLeft.getDistance(DistanceUnit.MM);
+                attempts -= 1;
             }
 
             double right_distance = 1000;
-            while (right_distance >= 1000) {
+            attempts = 100;
+            while (attempts > 0 && right_distance >= 1000) {
                 right_distance = distanceSensorLeft.getDistance(DistanceUnit.MM);
+                attempts -= 1;
+            }
+
+            if (left_distance >= 1000 || right_distance >= 1000)
+            {
+                // no valid distance sensing
+                continue;
             }
 
             double x = corner_distance - left_distance;
@@ -153,6 +163,7 @@ public class MecanumDrivetrain {
 
             if (Math.abs(x) < tolerance && Math.abs(y) < tolerance)
             {
+                // accurate enough
                 motorFrontLeft.setPower(0.0);
                 motorRearLeft.setPower(0.0);
                 motorFrontRight.setPower(0.0);
@@ -191,10 +202,10 @@ public class MecanumDrivetrain {
             final int MINIMUM_FULL_VELOCITY = Math.min(FRONT_LEFT_FULL_VELOCITY, Math.min(FRONT_RIGHT_FULL_VELOCITY, Math.min(BACK_LEFT_FULL_VELOCITY, BACK_RIGHT_FULL_VELOCITY)));
 
             // scaling
-            double scaledFrontLeftPower = frontLeftPower * MINIMUM_FULL_VELOCITY / FRONT_LEFT_FULL_VELOCITY / 4.0;
-            double scaledBackLeftPower = backLeftPower * MINIMUM_FULL_VELOCITY / BACK_LEFT_FULL_VELOCITY / 4.0;
-            double scaledFrontRightPower = frontRightPower * MINIMUM_FULL_VELOCITY / FRONT_RIGHT_FULL_VELOCITY / 4.0;
-            double scaledBackRightPower = backRightPower * MINIMUM_FULL_VELOCITY / BACK_RIGHT_FULL_VELOCITY / 4.0;
+            double scaledFrontLeftPower = frontLeftPower * MINIMUM_FULL_VELOCITY / FRONT_LEFT_FULL_VELOCITY * speed;
+            double scaledBackLeftPower = backLeftPower * MINIMUM_FULL_VELOCITY / BACK_LEFT_FULL_VELOCITY * speed;
+            double scaledFrontRightPower = frontRightPower * MINIMUM_FULL_VELOCITY / FRONT_RIGHT_FULL_VELOCITY * speed;
+            double scaledBackRightPower = backRightPower * MINIMUM_FULL_VELOCITY / BACK_RIGHT_FULL_VELOCITY * speed;
 
             motorFrontLeft.setPower(scaledFrontLeftPower);
             motorRearLeft.setPower(scaledBackLeftPower);

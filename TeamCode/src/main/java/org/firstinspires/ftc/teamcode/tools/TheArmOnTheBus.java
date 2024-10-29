@@ -1,4 +1,4 @@
-package org.firstinspires.ftc.teamcode.TeleOp;
+package org.firstinspires.ftc.teamcode.tools;
 
 import com.qualcomm.robotcore.hardware.ColorRangeSensor;
 import com.qualcomm.robotcore.hardware.DcMotor;
@@ -81,7 +81,7 @@ public class TheArmOnTheBus {
 
     public void intake_down()
     {
-        servoPosition = 0.f;
+        servoPosition = 0.1f;
         intake.grab();
     }
 
@@ -90,6 +90,13 @@ public class TheArmOnTheBus {
         intake.stop();
         servoPosition = 1.f;
     }
+
+    public void intake_delivery()
+    {
+        servoPosition = 0.8f;
+        intake.spit();
+    }
+
     public void update() throws InterruptedException
     {
         intakeServo.setPosition(servoPosition);
