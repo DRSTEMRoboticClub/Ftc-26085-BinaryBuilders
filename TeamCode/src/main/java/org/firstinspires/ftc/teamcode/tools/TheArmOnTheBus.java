@@ -81,7 +81,7 @@ public class TheArmOnTheBus {
 
     public void intake_down()
     {
-        servoPosition = 0.1f;
+        servoPosition = 0.4f;
         intake.grab();
     }
 
@@ -94,7 +94,7 @@ public class TheArmOnTheBus {
     public void intake_delivery()
     {
         servoPosition = 0.8f;
-        intake.spit();
+        intake.deliver();
     }
 
     public void update() throws InterruptedException

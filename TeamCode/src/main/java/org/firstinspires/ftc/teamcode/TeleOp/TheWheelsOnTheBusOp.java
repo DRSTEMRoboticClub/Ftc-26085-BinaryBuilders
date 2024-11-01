@@ -103,7 +103,7 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
 
     // Make the robot start grabbing samples from the pool
     public void sampleRobbery() throws InterruptedException {
-        missionArm.lift_arm(21);
+        missionArm.lift_arm(10);
         missionArm.extend_arm(0.2f);
         missionArm.intake_down();
         state = State.ROBBERY;
@@ -113,6 +113,7 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
     public void backToReadyPosition() throws InterruptedException {
         missionArm.intake_up();
         missionArm.extend_arm(0.0f);
+        Thread.sleep(500);
         missionArm.lift_arm(0);
     }
 
@@ -129,9 +130,11 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
 
     // Deliver the sample into the basket
     public void amazonDelivery() throws InterruptedException {
-        driveTrain.corner(DISTANCE_TO_CORNER, TOLERANCE_TO_CORNER, SPEED_CORNER);
+        //driveTrain.corner(DISTANCE_TO_CORNER, TOLERANCE_TO_CORNER, SPEED_CORNER);
         missionArm.lift_arm(135);
-        missionArm.extend_arm(1.0f);
+        Thread.sleep(1500);
+        missionArm.extend_arm(0.95f);
+        Thread.sleep(1500);
         missionArm.intake_delivery();
     }
 
@@ -171,6 +174,11 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
                 driveTrain.turn_right(TURN_RATE);
             }
 
+            if (gamepad1.x)
+            {
+                backToReadyPosition();
+            }
+
 
             switch (state)
             {
@@ -195,6 +203,10 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
                     }
                     break;
                 case ROBBED:
+                    if (controlPad_1.is_left_bumper_pressed())
+                    {
+                        sampleRobbery();
+                    }
                     if (controlPad_1.is_right_bumper_pressed())
                     {
                         amazonDelivery();
