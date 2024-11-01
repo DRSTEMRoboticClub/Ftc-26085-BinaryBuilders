@@ -23,7 +23,8 @@ public class TheIntakOnTheArm {
         IDLE,
         GRABBING,
         SPITTING,
-        GRABBED
+        GRABBED,
+        DELIVERING
     };
 
     public State getState()
@@ -61,12 +62,18 @@ public class TheIntakOnTheArm {
     public void grab()
     {
         state = State.GRABBING;
-        flapWheelMotor.setPower(1.0);
+        flapWheelMotor.setPower(0.75);
     }
 
     public void spit()
     {
         state = State.SPITTING;
+        flapWheelMotor.setPower(-1.0);
+    }
+
+    public void deliver()
+    {
+        state = State.DELIVERING;
         flapWheelMotor.setPower(-1.0);
     }
 
@@ -92,10 +99,18 @@ public class TheIntakOnTheArm {
                     String closed_colour = colourMatcher.ClosestColour(colourSensor).get_name();
                     if (closed_colour.equals(teamColour) || closed_colour.equals("Yellow"))
                     {
-                        telemetry.addData("Intake", "Grabbed");
-                        state = State.GRABBED;
-                        Thread.sleep(1000);
+                        Thread.sleep(500);
                         flapWheelMotor.setPower(0.0);
+                        if (colourSensor.getDistance(DistanceUnit.CM) < 3)
+                        {
+                            telemetry.addData("Intake", "Grabbed");
+                            state = State.GRABBED;
+                        }
+                        else
+                        {
+                            flapWheelMotor.setPower(1.0);
+                        }
+
                     }
                     else
                     {
@@ -112,6 +127,13 @@ public class TheIntakOnTheArm {
                     grab();
                 }
                 break;
+            case DELIVERING:
+                if (colourSensor.getDistance(DistanceUnit.CM) > 3) {
+                    Thread.sleep(1000);
+                    flapWheelMotor.setPower(0.0);
+                    state = State.IDLE;
+                }
+
         }
     }
 
