@@ -30,6 +30,7 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
         ROBBERY,
         ROBBED,
         DELIVERING,
+        DROPPING,
         CLIMBING
     }
 
@@ -134,8 +135,7 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
         missionArm.lift_arm(135);
         Thread.sleep(1500);
         missionArm.extend_arm(0.95f);
-        Thread.sleep(1500);
-        missionArm.intake_delivery();
+        missionArm.set_servo_position(0.6f);
     }
 
     // Climb in the endgame
@@ -179,6 +179,11 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
                 backToReadyPosition();
             }
 
+            if (gamepad1.y)
+            {
+                driveTrain.corner(400, 20, 0.2f);
+            }
+
 
             switch (state)
             {
@@ -214,6 +219,13 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
                     }
                     break;
                 case DELIVERING:
+                    if (gamepad1.a)
+                    {
+                        missionArm.intake_delivery();
+                        state = State.DROPPING;
+                    }
+                    break;
+                case DROPPING:
                     if (missionArm.getState() == TheIntakOnTheArm.State.IDLE)
                     {
                         backToReadyPosition();
