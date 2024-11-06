@@ -137,6 +137,7 @@ public class MecanumDrivetrain {
 
     public void corner(double corner_distance, double tolerance, float speed)
     {
+        double target_yaw = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS);
         while (true) {
             double left_distance = 1000;
             int attempts = 100;
@@ -148,7 +149,7 @@ public class MecanumDrivetrain {
             double right_distance = 1000;
             attempts = 100;
             while (attempts > 0 && right_distance >= 1000) {
-                right_distance = distanceSensorLeft.getDistance(DistanceUnit.MM);
+                right_distance = distanceSensorRight.getDistance(DistanceUnit.MM);
                 attempts -= 1;
             }
 
@@ -158,8 +159,14 @@ public class MecanumDrivetrain {
                 continue;
             }
 
-            double x = corner_distance - left_distance;
-            double y = corner_distance - right_distance;
+            telemetry.addData("Left Laser Range", left_distance);
+            telemetry.addData("Right Laser Range", right_distance);
+
+            double y = corner_distance - left_distance;
+            double x = right_distance - corner_distance;
+
+            telemetry.addData("x", x);
+            telemetry.addData("y", y);
 
             if (Math.abs(x) < tolerance && Math.abs(y) < tolerance)
             {
@@ -172,7 +179,7 @@ public class MecanumDrivetrain {
             }
 
             double yaw = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS);
-            double rx = direction + yaw;
+            double rx = target_yaw + yaw;
             if (rx > Math.PI)
             {
                 rx -= Math.PI * 2;
@@ -188,6 +195,10 @@ public class MecanumDrivetrain {
             double robot_angle = joystick_angle - Math.PI / 4.0;
             x = Math.cos(robot_angle) * m;
             y = Math.sin(robot_angle) * m;
+
+            telemetry.addData("xx", x);
+            telemetry.addData("yy", y);
+            telemetry.update();
 
             double denominator = Math.max(Math.abs(y) + Math.abs(x) + Math.abs(rx), 1);
             double frontLeftPower = (y + x + rx) / denominator;

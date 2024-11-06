@@ -81,7 +81,7 @@ public class TheArmOnTheBus {
 
     public void intake_down()
     {
-        servoPosition = 0.4f;
+        servoPosition = 0.2f;
         intake.grab();
     }
 
@@ -91,9 +91,13 @@ public class TheArmOnTheBus {
         servoPosition = 1.f;
     }
 
+    public void set_servo_position(float position)
+    {
+        servoPosition = position;
+    }
+
     public void intake_delivery()
     {
-        servoPosition = 0.8f;
         intake.deliver();
     }
 
@@ -110,7 +114,7 @@ public class TheArmOnTheBus {
         if (leftArmMotor.isOverCurrent() || rightArmMotor.isOverCurrent())
         {
             telemetry.addData("Alert", "Arm Motor Over Current");
-            leftArmMotor.setPower(0.0);
+            leftArmMotor.setPower(0.10);
             rightArmMotor.setPower(0.0);
         }
         if (slideMotor.isOverCurrent())

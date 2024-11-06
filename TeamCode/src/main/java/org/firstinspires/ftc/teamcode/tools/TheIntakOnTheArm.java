@@ -86,10 +86,6 @@ public class TheIntakOnTheArm {
     public void update() throws InterruptedException {
         telemetry.addData("Intake Range", colourSensor.getDistance(DistanceUnit.CM));
         telemetry.addData("Intake Colour", colourMatcher.ClosestColour(colourSensor).get_name());
-        telemetry.addData("Intake Red:", colourSensor.red());
-        telemetry.addData("Intake Green:", colourSensor.green());
-        telemetry.addData("Intake Blue:", colourSensor.blue());
-        telemetry.addData("Intake Alpha:", colourSensor.alpha());
 
         switch (state)
         {
