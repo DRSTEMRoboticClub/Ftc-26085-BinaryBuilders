@@ -24,6 +24,9 @@ public class TheArmOnTheBus {
     private final int ARM_MOTOR_MIN_ENCODE = 5;
     private final int ARM_MOTOR_ENCODE_COUNT = (int)Math.round(288.0 / 15 * 72);
 
+    private float armAngle = 0.f;
+    private float armExtend = 0.f;
+
     public TheArmOnTheBus(Telemetry the_telemetry, DcMotorEx left_arm_motor, DcMotorEx right_arm_motor, DcMotorEx slide_motor, Servo intake_servo, DcMotor intake_motor, ColorRangeSensor color_sensor, String teamColour)
     {
         telemetry = the_telemetry;
@@ -53,6 +56,18 @@ public class TheArmOnTheBus {
         slideMotor.setDirection(DcMotorSimple.Direction.REVERSE);
         servoPosition = 1.f;
         intake.initialise();
+        armAngle = 0.f;
+        armExtend = 0.f;
+    }
+
+    public float getArmAngle()
+    {
+        return armAngle;
+    }
+
+    public float getArmExtend()
+    {
+        return armExtend;
     }
 
     public void lift_arm(float angle)
@@ -64,6 +79,7 @@ public class TheArmOnTheBus {
         rightArmMotor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
         leftArmMotor.setPower(1.0);
         rightArmMotor.setPower(1.0);
+        armAngle = angle;
     }
 
     public void extend_arm(float percentage)
@@ -72,6 +88,7 @@ public class TheArmOnTheBus {
         slideMotor.setTargetPosition(slide_target);
         slideMotor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
         slideMotor.setPower(1.0);
+        armExtend = percentage;
     }
 
     public TheIntakOnTheArm.State getState()
