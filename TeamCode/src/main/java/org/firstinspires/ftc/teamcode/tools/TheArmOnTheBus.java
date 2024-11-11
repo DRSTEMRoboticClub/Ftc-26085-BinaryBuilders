@@ -54,7 +54,7 @@ public class TheArmOnTheBus {
         slideMotor.setTargetPositionTolerance(20);
         slideMotor.setCurrentAlert(8.0, CurrentUnit.AMPS);
         slideMotor.setDirection(DcMotorSimple.Direction.REVERSE);
-        servoPosition = 1.f;
+        servoPosition = 0.f;
         intake.initialise();
         armAngle = 0.f;
         armExtend = 0.f;
@@ -98,14 +98,14 @@ public class TheArmOnTheBus {
 
     public void intake_down()
     {
-        servoPosition = 0.2f;
+        servoPosition = 0.5f;
         intake.grab();
     }
 
     public void intake_up()
     {
         intake.stop();
-        servoPosition = 1.f;
+        servoPosition = 0.f;
     }
 
     public void set_servo_position(float position)
@@ -149,5 +149,10 @@ public class TheArmOnTheBus {
     public boolean is_arm_extend_finished()
     {
         return !slideMotor.isBusy();
+    }
+
+    public void intake_spit() throws InterruptedException{
+        intake.spit();
+        Thread.sleep(1000);
     }
 }

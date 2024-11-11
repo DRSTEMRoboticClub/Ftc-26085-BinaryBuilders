@@ -20,7 +20,7 @@ import org.firstinspires.ftc.teamcode.tools.TheIntakOnTheArm;
 public class TheWheelsOnTheBusOp extends LinearOpMode {
     static final double TURN_RATE = Math.PI / 4; // 45 degrees each bumper hit
     static final int TOLERANCE_TO_CORNER = 20;
-    static final float SPEED_CORNER = 0.2f;
+    static final float SPEED_CORNER = 0.25f;
     static final String teamColour = "Red";
 
     enum State
@@ -44,6 +44,7 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
 
     // Control pad
     private ControlPad controlPad_1;
+    private ControlPad controlPad_2;
 
     // Robot Arm
     private TheArmOnTheBus missionArm;
@@ -54,7 +55,8 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
 
     private boolean autoPilotOn = false;
 
-    private int distanceToCorner = 400;
+    //private int distanceToCorner = 400;
+    private int distanceToCorner = 750;
 
     // Initialise robot
     public void autoBotRollout() throws InterruptedException
@@ -111,7 +113,7 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
 
     // Make the robot start grabbing samples from the pool
     public void sampleRobbery() throws InterruptedException {
-        missionArm.lift_arm(10);
+        missionArm.lift_arm(20);
         missionArm.extend_arm(0.2f);
         missionArm.intake_down();
         state = State.ROBBERY;
@@ -120,13 +122,16 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
     // Make the arm and intake extends
     public void pushArm()
     {
-        missionArm.lift_arm(missionArm.getArmAngle() + 1.f);
-        missionArm.extend_arm(missionArm.getArmExtend() + 0.02f);
+        if (missionArm.getArmExtend() < 0.45f)
+        {
+            missionArm.lift_arm(missionArm.getArmAngle() + 0.5f);
+            missionArm.extend_arm(missionArm.getArmExtend() + 0.02f);
+        }
     }
 
     public void pullArm()
     {
-        missionArm.lift_arm(missionArm.getArmAngle() - 1.f);
+        missionArm.lift_arm(missionArm.getArmAngle() - 0.5f);
         missionArm.extend_arm(missionArm.getArmExtend() - 0.02f);
     }
 
@@ -134,9 +139,19 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
     public void backToReadyPosition() throws InterruptedException {
         autoPilotOn = false;
         missionArm.intake_up();
-        missionArm.extend_arm(0.0f);
+        missionArm.extend_arm(0.01f);
         Thread.sleep(500);
-        missionArm.lift_arm(0);
+        missionArm.lift_arm(1);
+        moveSpeed = 1.f;
+    }
+
+    public void downToReadyPosition() throws InterruptedException {
+        autoPilotOn = false;
+        missionArm.intake_down();
+        missionArm.extend_arm(0.01f);
+        Thread.sleep(1000);
+        missionArm.intake_up();
+        missionArm.lift_arm(1);
         moveSpeed = 1.f;
     }
 
@@ -155,8 +170,25 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
     public void amazonDelivery() throws InterruptedException {
         missionArm.lift_arm(135);
         Thread.sleep(1500);
-        missionArm.extend_arm(0.95f);
-        missionArm.set_servo_position(0.6f);
+        missionArm.extend_arm(0.99f);
+        missionArm.set_servo_position(0.25f);
+    }
+
+    public void autoAmazonDelivery() throws InterruptedException {
+        int limit = 500;
+        while (limit > 0)
+        {
+             boolean alignment_success = driveTrain.corner(distanceToCorner, TOLERANCE_TO_CORNER, SPEED_CORNER);
+             if (alignment_success)
+             {
+                 amazonDelivery();
+                 Thread.sleep(2000);
+                 missionArm.intake_delivery();
+                 state = State.DROPPING;
+                 return;
+             }
+             limit--;
+        }
     }
 
     // Climb in the endgame
@@ -175,14 +207,9 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
 
         if (isStopRequested()) return;
 
-        double maxVelocityFrontRight = 0.0;
-        double maxVelocityFrontLeft = 0.0;
-        double maxVelocityBackRight = 0.0;
-        double maxVelocityBackLeft = 0.0;
-
-
         while (opModeIsActive()) {
             ControlPad.JoyStickStatus right_joy_stick = controlPad_1.right_joystick_x();
+            telemetry.addData("Arm extension", missionArm.getArmExtend());
             if (right_joy_stick == ControlPad.JoyStickStatus.LEFT)
             {
                 driveTrain.turn_left(TURN_RATE);
@@ -194,13 +221,23 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
 
             if (gamepad1.x)
             {
-                backToReadyPosition();
+                missionArm.intake_spit();
+                cancelRobbery();
+            }
+
+            if (gamepad2.y)
+            {
+                autoPilotOn = true;
+            }
+            else if (gamepad2.x)
+            {
+                autoPilotOn = false;
             }
 
             switch (state)
             {
                 case READY:
-                    moveSpeed = 1.f;
+                    moveSpeed = 0.95f;
                     if (controlPad_1.is_left_bumper_pressed())
                     {
                         sampleRobbery();
@@ -208,14 +245,14 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
                     break;
                 case ROBBERY:
                     // Slow down the robot
-                    moveSpeed = 0.5f;
+                    moveSpeed = 0.35f;
 
                     // made the arm adjustable
-                    if (gamepad2.dpad_up)
+                    if (gamepad1.left_trigger > 0)
                     {
                         pushArm();
                     }
-                    else if (gamepad2.dpad_down)
+                    else if (gamepad1.right_trigger > 0)
                     {
                         pullArm();
                     }
@@ -234,7 +271,7 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
                     }
                     break;
                 case ROBBED:
-                    moveSpeed = 1.f;
+                    moveSpeed = 0.95f;;
                     // In case the sample drops out
                     if (controlPad_1.is_left_bumper_pressed())
                     {
@@ -242,31 +279,21 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
                     }
 
                     // Up arm to get ready for delivering the sample
-                    if (controlPad_1.is_right_bumper_pressed())
+                    if (gamepad2.left_bumper)
                     {
                         amazonDelivery();
                         state = State.DELIVERING;
                     }
 
-                    if (gamepad2.y)
+                    // Up arm to get ready for delivering the sample
+                    if (gamepad2.right_bumper )
                     {
-                        autoPilotOn = true;
-                    }
-                    else if (gamepad2.x)
-                    {
-                        autoPilotOn = false;
+                        autoAmazonDelivery();
                     }
                     break;
+
                 case DELIVERING:
-                    moveSpeed = 0.25f;
-                    if (gamepad2.y)
-                    {
-                        autoPilotOn = true;
-                    }
-                    else if (gamepad2.x)
-                    {
-                        autoPilotOn = false;
-                    }
+                    moveSpeed = 0.2f;
 
                     if (gamepad2.a)
                     {
@@ -278,7 +305,7 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
                     moveSpeed = 0.f;
                     if (missionArm.getState() == TheIntakOnTheArm.State.IDLE)
                     {
-                        backToReadyPosition();
+                        downToReadyPosition();
                         autoPilotOn = false;
                         state = State.READY;
                     }
@@ -287,11 +314,11 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
             // Choose auto mode or manual mode
             if (autoPilotOn)
             {
-                if (gamepad2.dpad_up)
+                if (gamepad2.dpad_right)
                 {
                     distanceToCorner += 50;
                 }
-                else if (gamepad2.dpad_down)
+                else if (gamepad2.dpad_left)
                 {
                     distanceToCorner -= 50;
                 }
