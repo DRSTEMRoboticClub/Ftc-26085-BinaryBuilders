@@ -126,102 +126,96 @@ public class MecanumDrivetrain {
         motorRearLeft.setPower(scaledBackLeftPower);
         motorFrontRight.setPower(scaledFrontRightPower);
         motorRearRight.setPower(scaledBackRightPower);
-/*
-        telemetry.addData("FrontLeftWheelVelocity", motorFrontLeft.getVelocity());
-        telemetry.addData("FrontRightWheelVelocity", motorFrontRight.getVelocity());
-        telemetry.addData("BackLeftWheelVelocity", motorRearLeft.getVelocity());
-        telemetry.addData("BackRightWheelVelocity", motorRearRight.getVelocity());
-
- */
     }
 
-    public void corner(double corner_distance, double tolerance, float speed)
+    public boolean corner(double corner_distance, double tolerance, float speed)
     {
+        telemetry.addData("AutoPilotDist", corner_distance);
         double target_yaw = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS);
-        while (true) {
-            double left_distance = 1000;
-            int attempts = 100;
-            while (attempts > 0 && left_distance >= 1000) {
-                left_distance = distanceSensorLeft.getDistance(DistanceUnit.MM);
-                attempts -= 1;
-            }
-
-            double right_distance = 1000;
-            attempts = 100;
-            while (attempts > 0 && right_distance >= 1000) {
-                right_distance = distanceSensorRight.getDistance(DistanceUnit.MM);
-                attempts -= 1;
-            }
-
-            if (left_distance >= 1000 || right_distance >= 1000)
-            {
-                // no valid distance sensing
-                continue;
-            }
-
-            telemetry.addData("Left Laser Range", left_distance);
-            telemetry.addData("Right Laser Range", right_distance);
-
-            double y = corner_distance - left_distance;
-            double x = right_distance - corner_distance;
-
-            telemetry.addData("x", x);
-            telemetry.addData("y", y);
-
-            if (Math.abs(x) < tolerance && Math.abs(y) < tolerance)
-            {
-                // accurate enough
-                motorFrontLeft.setPower(0.0);
-                motorRearLeft.setPower(0.0);
-                motorFrontRight.setPower(0.0);
-                motorRearRight.setPower(0.0);
-                break;
-            }
-
-            double yaw = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS);
-            double rx = target_yaw + yaw;
-            if (rx > Math.PI)
-            {
-                rx -= Math.PI * 2;
-            }
-            else if (rx < -Math.PI)
-            {
-                rx += Math.PI * 2;
-            }
-            rx *= 2.5;
-
-            double joystick_angle = Math.atan2(y, x); // in radian
-            double m = Math.sqrt(x * x + y * y);
-            double robot_angle = joystick_angle - Math.PI / 4.0;
-            x = Math.cos(robot_angle) * m;
-            y = Math.sin(robot_angle) * m;
-
-            telemetry.addData("xx", x);
-            telemetry.addData("yy", y);
-            telemetry.update();
-
-            double denominator = Math.max(Math.abs(y) + Math.abs(x) + Math.abs(rx), 1);
-            double frontLeftPower = (y + x + rx) / denominator;
-            double backLeftPower = (y - x + rx) / denominator;
-            double frontRightPower = (y - x - rx) / denominator;
-            double backRightPower = (y + x - rx) / denominator;
-
-            final int FRONT_LEFT_FULL_VELOCITY = 2300;
-            final int FRONT_RIGHT_FULL_VELOCITY = 2400;
-            final int BACK_LEFT_FULL_VELOCITY = 2450;
-            final int BACK_RIGHT_FULL_VELOCITY = 2550;
-            final int MINIMUM_FULL_VELOCITY = Math.min(FRONT_LEFT_FULL_VELOCITY, Math.min(FRONT_RIGHT_FULL_VELOCITY, Math.min(BACK_LEFT_FULL_VELOCITY, BACK_RIGHT_FULL_VELOCITY)));
-
-            // scaling
-            double scaledFrontLeftPower = frontLeftPower * MINIMUM_FULL_VELOCITY / FRONT_LEFT_FULL_VELOCITY * speed;
-            double scaledBackLeftPower = backLeftPower * MINIMUM_FULL_VELOCITY / BACK_LEFT_FULL_VELOCITY * speed;
-            double scaledFrontRightPower = frontRightPower * MINIMUM_FULL_VELOCITY / FRONT_RIGHT_FULL_VELOCITY * speed;
-            double scaledBackRightPower = backRightPower * MINIMUM_FULL_VELOCITY / BACK_RIGHT_FULL_VELOCITY * speed;
-
-            motorFrontLeft.setPower(scaledFrontLeftPower);
-            motorRearLeft.setPower(scaledBackLeftPower);
-            motorFrontRight.setPower(scaledFrontRightPower);
-            motorRearRight.setPower(scaledBackRightPower);
+        double left_distance = 1500;
+        int attempts = 100;
+        while (attempts > 0 && left_distance >= 1500) {
+            left_distance = distanceSensorLeft.getDistance(DistanceUnit.MM);
+            attempts -= 1;
         }
+
+        double right_distance = 1500;
+        attempts = 100;
+        while (attempts > 0 && right_distance >= 1500) {
+            right_distance = distanceSensorRight.getDistance(DistanceUnit.MM);
+            attempts -= 1;
+        }
+
+        if (left_distance >= 1500 || right_distance >= 1500)
+        {
+            // no valid distance sensing
+            return false;
+        }
+
+        telemetry.addData("Left Laser Range", left_distance);
+        telemetry.addData("Right Laser Range", right_distance);
+
+        double y = corner_distance - left_distance;
+        double x = right_distance - corner_distance;
+
+        telemetry.addData("x", x);
+        telemetry.addData("y", y);
+
+        if (Math.abs(x) < tolerance && Math.abs(y) < tolerance)
+        {
+            // accurate enough
+            motorFrontLeft.setPower(0.0);
+            motorRearLeft.setPower(0.0);
+            motorFrontRight.setPower(0.0);
+            motorRearRight.setPower(0.0);
+            return true;
+        }
+
+        double yaw = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS);
+        double rx = target_yaw + yaw;
+        if (rx > Math.PI)
+        {
+            rx -= Math.PI * 2;
+        }
+        else if (rx < -Math.PI)
+        {
+            rx += Math.PI * 2;
+        }
+        rx *= 2.5;
+
+        double joystick_angle = Math.atan2(y, x); // in radian
+        double m = Math.sqrt(x * x + y * y);
+        double robot_angle = joystick_angle - Math.PI / 4.0;
+        x = Math.cos(robot_angle) * m;
+        y = Math.sin(robot_angle) * m;
+
+        telemetry.addData("xx", x);
+        telemetry.addData("yy", y);
+        telemetry.update();
+
+        double denominator = Math.max(Math.abs(y) + Math.abs(x) + Math.abs(rx), 1);
+        double frontLeftPower = (y + x + rx) / denominator;
+        double backLeftPower = (y - x + rx) / denominator;
+        double frontRightPower = (y - x - rx) / denominator;
+        double backRightPower = (y + x - rx) / denominator;
+
+        final int FRONT_LEFT_FULL_VELOCITY = 2300;
+        final int FRONT_RIGHT_FULL_VELOCITY = 2400;
+        final int BACK_LEFT_FULL_VELOCITY = 2450;
+        final int BACK_RIGHT_FULL_VELOCITY = 2550;
+        final int MINIMUM_FULL_VELOCITY = Math.min(FRONT_LEFT_FULL_VELOCITY, Math.min(FRONT_RIGHT_FULL_VELOCITY, Math.min(BACK_LEFT_FULL_VELOCITY, BACK_RIGHT_FULL_VELOCITY)));
+
+        // scaling
+        double scaledFrontLeftPower = frontLeftPower * MINIMUM_FULL_VELOCITY / FRONT_LEFT_FULL_VELOCITY * speed;
+        double scaledBackLeftPower = backLeftPower * MINIMUM_FULL_VELOCITY / BACK_LEFT_FULL_VELOCITY * speed;
+        double scaledFrontRightPower = frontRightPower * MINIMUM_FULL_VELOCITY / FRONT_RIGHT_FULL_VELOCITY * speed;
+        double scaledBackRightPower = backRightPower * MINIMUM_FULL_VELOCITY / BACK_RIGHT_FULL_VELOCITY * speed;
+
+        motorFrontLeft.setPower(scaledFrontLeftPower);
+        motorRearLeft.setPower(scaledBackLeftPower);
+        motorFrontRight.setPower(scaledFrontRightPower);
+        motorRearRight.setPower(scaledBackRightPower);
+
+        return false;
     }
 }
