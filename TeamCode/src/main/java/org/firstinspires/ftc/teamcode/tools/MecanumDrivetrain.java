@@ -117,11 +117,6 @@ public class MecanumDrivetrain {
         double scaledFrontRightPower = frontRightPower * MINIMUM_FULL_VELOCITY / FRONT_RIGHT_FULL_VELOCITY * speed;
         double scaledBackRightPower = backRightPower * MINIMUM_FULL_VELOCITY / BACK_RIGHT_FULL_VELOCITY * speed;
 
-        telemetry.addData("FrontLeftWheelPower", scaledFrontLeftPower);
-        telemetry.addData("FrontRightWheelPower", scaledFrontRightPower);
-        telemetry.addData("BackLeftWheelPower", scaledBackLeftPower);
-        telemetry.addData("BackRightWheelPower", scaledBackRightPower);
-
         motorFrontLeft.setPower(scaledFrontLeftPower);
         motorRearLeft.setPower(scaledBackLeftPower);
         motorFrontRight.setPower(scaledFrontRightPower);
@@ -158,9 +153,6 @@ public class MecanumDrivetrain {
         double y = corner_distance - left_distance;
         double x = right_distance - corner_distance;
 
-        telemetry.addData("x", x);
-        telemetry.addData("y", y);
-
         if (Math.abs(x) < tolerance && Math.abs(y) < tolerance)
         {
             // accurate enough
@@ -188,10 +180,6 @@ public class MecanumDrivetrain {
         double robot_angle = joystick_angle - Math.PI / 4.0;
         x = Math.cos(robot_angle) * m;
         y = Math.sin(robot_angle) * m;
-
-        telemetry.addData("xx", x);
-        telemetry.addData("yy", y);
-        telemetry.update();
 
         double denominator = Math.max(Math.abs(y) + Math.abs(x) + Math.abs(rx), 1);
         double frontLeftPower = (y + x + rx) / denominator;

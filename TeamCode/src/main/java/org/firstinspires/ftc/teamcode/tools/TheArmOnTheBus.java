@@ -125,13 +125,11 @@ public class TheArmOnTheBus {
         telemetry.addData("LeftMotorCurrent", leftArmMotor.getCurrent(CurrentUnit.AMPS));
         telemetry.addData("RightMotorCurrent", rightArmMotor.getCurrent(CurrentUnit.AMPS));
         telemetry.addData("SlideMotorCurrent", slideMotor.getCurrent(CurrentUnit.AMPS));
-        telemetry.addData("LeftMotorSteps", leftArmMotor.getCurrentPosition());
-        telemetry.addData("RightMotorSteps", rightArmMotor.getCurrentPosition());
-        telemetry.addData("SlideMotorSteps", slideMotor.getCurrentPosition());
+
         if (leftArmMotor.isOverCurrent() || rightArmMotor.isOverCurrent())
         {
             telemetry.addData("Alert", "Arm Motor Over Current");
-            leftArmMotor.setPower(0.10);
+            leftArmMotor.setPower(0.0);
             rightArmMotor.setPower(0.0);
         }
         if (slideMotor.isOverCurrent())
