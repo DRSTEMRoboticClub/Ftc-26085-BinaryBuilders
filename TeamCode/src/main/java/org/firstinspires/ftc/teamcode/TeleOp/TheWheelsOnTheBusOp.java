@@ -210,6 +210,7 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
         while (opModeIsActive()) {
             ControlPad.JoyStickStatus right_joy_stick = controlPad_1.right_joystick_x();
             telemetry.addData("Arm extension", missionArm.getArmExtend());
+            telemetry.addData("State",state.name());
             if (right_joy_stick == ControlPad.JoyStickStatus.LEFT)
             {
                 driveTrain.turn_left(TURN_RATE);

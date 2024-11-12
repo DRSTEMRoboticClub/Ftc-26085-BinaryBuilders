@@ -86,7 +86,7 @@ public class TheIntakOnTheArm {
     public void update() throws InterruptedException {
         telemetry.addData("Intake Range", colourSensor.getDistance(DistanceUnit.CM));
         telemetry.addData("Intake Colour", colourMatcher.ClosestColour(colourSensor).get_name());
-
+        telemetry.addData("Intake State", state.name());
         switch (state)
         {
             case GRABBING:
@@ -106,7 +106,6 @@ public class TheIntakOnTheArm {
                         {
                             flapWheelMotor.setPower(1.0);
                         }
-
                     }
                     else
                     {
