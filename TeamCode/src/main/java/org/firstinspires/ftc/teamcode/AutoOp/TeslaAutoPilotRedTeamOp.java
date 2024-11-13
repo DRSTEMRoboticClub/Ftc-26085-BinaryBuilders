@@ -1,27 +1,26 @@
-package org.firstinspires.ftc.teamcode.TeleOp;
+package org.firstinspires.ftc.teamcode.AutoOp;
 
 import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-
-import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
+import com.qualcomm.robotcore.hardware.ColorRangeSensor;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.DistanceSensor;
-import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.IMU;
-import com.qualcomm.robotcore.hardware.ColorRangeSensor;
-import org.firstinspires.ftc.teamcode.tools.MecanumDrivetrain;
+import com.qualcomm.robotcore.hardware.Servo;
+
 import org.firstinspires.ftc.teamcode.tools.ControlPad;
+import org.firstinspires.ftc.teamcode.tools.MecanumDrivetrain;
 import org.firstinspires.ftc.teamcode.tools.TheArmOnTheBus;
 import org.firstinspires.ftc.teamcode.tools.TheIntakOnTheArm;
 
-@TeleOp
-public class TheWheelsOnTheBusOp extends LinearOpMode {
+@Autonomous
+public class TeslaAutoPilotRedTeamOp extends LinearOpMode {
     static final double TURN_RATE = Math.PI / 4; // 45 degrees each bumper hit
     static final int TOLERANCE_TO_CORNER = 20;
     static final float SPEED_CORNER = 0.25f;
-    static final String teamColour = "Red";
 
     enum State
     {
@@ -51,12 +50,11 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
 
     private State state;
 
-    private float moveSpeed = 1.0f;
+    private float moveSpeed = 0.75f;
 
     private boolean autoPilotOn = false;
 
-    //private int distanceToCorner = 400;
-    private int distanceToCorner = 750;
+    private int distanceToCorner = 400;
 
     // Initialise robot
     public void autoBotRollout() throws InterruptedException
@@ -64,7 +62,7 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
         // Declare our motors
         // Create motors
         autoPilotOn = false;
-        moveSpeed = 1.f;
+        moveSpeed = 0.75f;
         DcMotorEx frontLeftMotor = (DcMotorEx)hardwareMap.dcMotor.get("MotorC");
         DcMotorEx backLeftMotor = (DcMotorEx)hardwareMap.dcMotor.get("MotorD");
         DcMotorEx frontRightMotor = (DcMotorEx)hardwareMap.dcMotor.get("MotorB");
@@ -105,7 +103,7 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
         controlPad_1 = new ControlPad(telemetry, gamepad1);
 
         // mission arm
-        missionArm = new TheArmOnTheBus(telemetry, armMotorLeft, armMotorRight, armSlideMotor, intakeAngleServo, intakeFlapWheelMotor, colourSensor, teamColour);
+        missionArm = new TheArmOnTheBus(telemetry, armMotorLeft, armMotorRight, armSlideMotor, intakeAngleServo, intakeFlapWheelMotor, colourSensor, "Red");
         missionArm.initialise();
 
         state = State.READY;
@@ -174,7 +172,7 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
         missionArm.set_servo_position(0.25f);
     }
 
-    public void autoAmazonDelivery() throws InterruptedException {
+    public Boolean autoAmazonDelivery() throws InterruptedException {
         int limit = 500;
         while (limit > 0)
         {
@@ -185,10 +183,11 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
                  Thread.sleep(2000);
                  missionArm.intake_delivery();
                  state = State.DROPPING;
-                 return;
+                 return true;
              }
              limit--;
         }
+        return false;
     }
 
     // Climb in the endgame
@@ -207,133 +206,22 @@ public class TheWheelsOnTheBusOp extends LinearOpMode {
 
         if (isStopRequested()) return;
 
-        while (opModeIsActive()) {
-            ControlPad.JoyStickStatus right_joy_stick = controlPad_1.right_joystick_x();
-            telemetry.addData("Arm extension", missionArm.getArmExtend());
-            telemetry.addData("State",state.name());
-            if (right_joy_stick == ControlPad.JoyStickStatus.LEFT)
+        if (opModeIsActive()) {
+            driveTrain.run(-1.f, 1.f, moveSpeed);
+            Thread.sleep(3000);
+            driveTrain.run(0.f, 0.f, moveSpeed);
+            driveTrain.turn_right(TURN_RATE);
+            int retry = 10;
+            while(retry > 0 && !autoAmazonDelivery())
             {
-                driveTrain.turn_left(TURN_RATE);
+                retry--;
             }
-            if (right_joy_stick == ControlPad.JoyStickStatus.RIGHT)
-            {
-                driveTrain.turn_right(TURN_RATE);
-            }
-
-            if (gamepad1.x)
-            {
-                missionArm.intake_spit();
-                cancelRobbery();
-            }
-
-            if (gamepad2.y)
-            {
-                autoPilotOn = true;
-            }
-            else if (gamepad2.x)
-            {
-                autoPilotOn = false;
-            }
-
-            switch (state)
-            {
-                case READY:
-                    moveSpeed = 0.95f;
-                    if (controlPad_1.is_left_bumper_pressed())
-                    {
-                        sampleRobbery();
-                    }
-                    break;
-                case ROBBERY:
-                    // Slow down the robot
-                    moveSpeed = 0.35f;
-
-                    // made the arm adjustable
-                    if (gamepad1.left_trigger > 0)
-                    {
-                        pushArm();
-                    }
-                    else if (gamepad1.right_trigger > 0)
-                    {
-                        pullArm();
-                    }
-
-                    if (controlPad_1.is_left_bumper_pressed())
-                    {
-                        cancelRobbery();
-                    }
-                    else
-                    {
-                        if (missionArm.getState() == TheIntakOnTheArm.State.GRABBED)
-                        {
-                            robberySuccess();
-                            state = State.ROBBED;
-                        }
-                    }
-                    break;
-                case ROBBED:
-                    moveSpeed = 0.95f;;
-                    // In case the sample drops out
-                    if (controlPad_1.is_left_bumper_pressed())
-                    {
-                        sampleRobbery();
-                    }
-
-                    // Up arm to get ready for delivering the sample
-                    if (gamepad2.left_bumper)
-                    {
-                        amazonDelivery();
-                        state = State.DELIVERING;
-                    }
-
-                    // Up arm to get ready for delivering the sample
-                    if (gamepad2.right_bumper )
-                    {
-                        autoAmazonDelivery();
-                    }
-                    break;
-
-                case DELIVERING:
-                    moveSpeed = 0.2f;
-
-                    if (gamepad2.a)
-                    {
-                        missionArm.intake_delivery();
-                        state = State.DROPPING;
-                    }
-                    break;
-                case DROPPING:
-                    moveSpeed = 0.f;
-                    if (missionArm.getState() == TheIntakOnTheArm.State.IDLE)
-                    {
-                        downToReadyPosition();
-                        autoPilotOn = false;
-                        state = State.READY;
-                    }
-            }
-
-            // Choose auto mode or manual mode
-            if (autoPilotOn)
-            {
-                if (gamepad2.dpad_right)
-                {
-                    distanceToCorner += 50;
-                }
-                else if (gamepad2.dpad_left)
-                {
-                    distanceToCorner -= 50;
-                }
-                driveTrain.corner(distanceToCorner, TOLERANCE_TO_CORNER, SPEED_CORNER);
-            }
-            else
-            {
-                double y = -gamepad1.left_stick_y; // Remember, Y stick value is reversed
-                double x = gamepad1.left_stick_x * 1.1; // Counteract imperfect strafing
-                driveTrain.run(x, y, moveSpeed);
-            }
-
-            missionArm.update();
-            telemetry.update();
+            driveTrain.run(0.f, 1.f, moveSpeed);
+            Thread.sleep(2000);
+            driveTrain.turn_left(TURN_RATE);
+            driveTrain.run(1.f, -1.f, moveSpeed);
+            Thread.sleep(3000);
+            driveTrain.run(0.f, 0.f, moveSpeed);
         }
     }
 }
