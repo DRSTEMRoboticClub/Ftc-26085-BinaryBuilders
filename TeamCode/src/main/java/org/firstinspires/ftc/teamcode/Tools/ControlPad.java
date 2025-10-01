@@ -1,5 +1,4 @@
-package org.firstinspires.ftc.teamcode.tools;
-import com.qualcomm.robotcore.hardware.ControlSystem;
+package org.firstinspires.ftc.teamcode.Tools;
 import com.qualcomm.robotcore.hardware.Gamepad;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 public class ControlPad {

@@ -1,8 +1,7 @@
-package org.firstinspires.ftc.teamcode.tools;
+package org.firstinspires.ftc.teamcode.Tools;
 
 import com.qualcomm.robotcore.hardware.ColorSensor;
 
-import org.firstinspires.ftc.teamcode.tools.Colour;
 import java.util.ArrayList;
 
 public class ColourMatcher {
