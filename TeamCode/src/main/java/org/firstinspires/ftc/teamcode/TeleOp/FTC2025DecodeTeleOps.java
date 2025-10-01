@@ -44,6 +44,7 @@ public class FTC2025DecodeTeleOps extends LinearOpMode {
                 basketSystem.ReleaseGreen();
             }
             telemetry.update();
+            basketSystem.Update();
         }
     }
 }
