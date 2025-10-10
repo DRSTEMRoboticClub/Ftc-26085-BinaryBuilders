@@ -1,20 +1,28 @@
 package org.firstinspires.ftc.teamcode.Tools;
+import com.qualcomm.robotcore.hardware.PwmControl;
 import com.qualcomm.robotcore.hardware.Servo;
+import com.qualcomm.robotcore.hardware.ServoImpl;
+import com.qualcomm.robotcore.hardware.ServoImplEx;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
 public class TheArtifactBasketSystem {
-    private final Servo basketServo;
+    private final ServoImplEx basketServo;
     private final Servo shutter1;
     private final Servo shutter2;
     private final Servo shutter3;
     private final Servo shutter4;
+    private double servoPosition = 0.0;
+
+    public boolean hasGreen = false;
+    public boolean hasPurple1 = false;
+    public boolean hasPurple2 = false;
 
     static public final int WAIT_SHUTTER_MILLISECONDS = 500;
     static public final int WAIT_BASKET_MILLISECONDS = 500;
 
     ElapsedTime myTimer = new ElapsedTime();
 
-    private enum BasketState {
+    public enum BasketState {
         RECEIVING_GREEN,
         RECEIVING_PURPLE2,
         RECEIVING_PURPLE1,
@@ -44,7 +52,17 @@ public class TheArtifactBasketSystem {
 
     private BasketState currentState = BasketState.FREE;
 
-    public TheArtifactBasketSystem(Servo the_basket_servo, Servo the_shutter1, Servo the_shutter2, Servo the_shutter3, Servo the_shutter4) throws InterruptedException {
+    private void turnServoTo(double position) {
+        if (position < 0.0) {
+            position = 0.0;
+        } else if (position > 1.0) {
+            position = 1.0;
+        }
+        basketServo.setPosition(position);
+        servoPosition = position;
+    }
+
+    public TheArtifactBasketSystem(ServoImplEx the_basket_servo, Servo the_shutter1, Servo the_shutter2, Servo the_shutter3, Servo the_shutter4) throws InterruptedException {
         basketServo = the_basket_servo;
         shutter1 = the_shutter1;
         shutter2 = the_shutter2;
@@ -52,15 +70,23 @@ public class TheArtifactBasketSystem {
         shutter4 = the_shutter4;
         CloseShooter();
         CloseIntake();
-        basketServo.setPosition(0.0);
+        basketServo.setPwmRange(new PwmControl.PwmRange(500, 2500));
+        turnServoTo(0.0);
     }
 
-    public void OpenIntake() {
+    public void OpenIntake() throws InterruptedException {
+
         shutter3.setPosition(1.0);
         shutter4.setPosition(1.0);
     }
 
-    public void CloseIntake() {
+    public void CloseIntake() throws InterruptedException {
+        if (servoPosition + 0.1 <= 1.0) {
+            turnServoTo(servoPosition + 0.1);
+        } else {
+            turnServoTo(servoPosition - 0.1);
+        }
+        Thread.sleep(100);
         shutter3.setPosition(0.0);
         shutter4.setPosition(0.0);
     }
@@ -71,6 +97,12 @@ public class TheArtifactBasketSystem {
     }
 
     public void CloseShooter() throws InterruptedException {
+        if (servoPosition + 0.1 <= 1.0) {
+            turnServoTo(servoPosition + 0.1);
+        } else {
+            turnServoTo(servoPosition - 0.1);
+        }
+        Thread.sleep(100);
         shutter1.setPosition(0.0);
         shutter2.setPosition(0.0);
     }
@@ -121,7 +153,7 @@ public class TheArtifactBasketSystem {
             switch (currentState) {
                 case PRE_RECEIVING_GREEN:
                     if (myTimer.milliseconds() > WAIT_SHUTTER_MILLISECONDS) {
-                        basketServo.setPosition(58.0 / 300.0);
+                        turnServoTo(58.0 / 300.0);
                         myTimer.reset();
                         currentState = BasketState.RECEIVING_GREEN;
                     }
@@ -136,11 +168,12 @@ public class TheArtifactBasketSystem {
                 case POST_RECEIVING_GREEN:
                     if (myTimer.milliseconds() > WAIT_SHUTTER_MILLISECONDS) {
                         currentState = BasketState.RECEIVED_GREEN;
+                        hasGreen = true;
                     }
                     break;
                 case PRE_RECEIVING_PURPLE2:
                     if (myTimer.milliseconds() > WAIT_SHUTTER_MILLISECONDS) {
-                        basketServo.setPosition(185.0 / 300.0);
+                        turnServoTo(185.0 / 300.0);
                         myTimer.reset();
                         currentState = BasketState.RECEIVING_PURPLE2;
                     }
@@ -155,11 +188,12 @@ public class TheArtifactBasketSystem {
                 case POST_RECEIVING_PURPLE2:
                     if (myTimer.milliseconds() > WAIT_SHUTTER_MILLISECONDS) {
                         currentState = BasketState.RECEIVED_PURPLE2;
+                        hasPurple2 = true;
                     }
                     break;
                 case PRE_RECEIVING_PURPLE1:
                     if (myTimer.milliseconds() > WAIT_SHUTTER_MILLISECONDS) {
-                        basketServo.setPosition(1.0);
+                        turnServoTo(1.0);
                         myTimer.reset();
                         currentState = BasketState.RECEIVING_PURPLE1;
                     }
@@ -174,11 +208,12 @@ public class TheArtifactBasketSystem {
                 case POST_RECEIVING_PURPLE1:
                     if (myTimer.milliseconds() > WAIT_SHUTTER_MILLISECONDS) {
                         currentState = BasketState.RECEIVED_PURPLE1;
+                        hasPurple1 = true;
                     }
                     break;
                 case PRE_RELEASING_GREEN:
                     if (myTimer.milliseconds() > WAIT_SHUTTER_MILLISECONDS) {
-                        basketServo.setPosition(250.0 / 300.0);
+                        turnServoTo(250.0 / 300.0);
                         myTimer.reset();
                         currentState = BasketState.RELEASING_GREEN;
                     }
@@ -193,12 +228,13 @@ public class TheArtifactBasketSystem {
                 case POST_RELEASING_GREEN:
                     if (myTimer.milliseconds() > WAIT_SHUTTER_MILLISECONDS) {
                         currentState = BasketState.RELEASED_GREEN;
+                        hasGreen = false;
                     }
                     break;
                 case PRE_RELEASING_PURPLE2:
                     if (myTimer.milliseconds() > WAIT_SHUTTER_MILLISECONDS) {
                         myTimer.reset();
-                        basketServo.setPosition(0.0);
+                        turnServoTo(0.0);
                         currentState = BasketState.RELEASING_PURPLE2;
                     }
                     break;
@@ -212,12 +248,13 @@ public class TheArtifactBasketSystem {
                 case POST_RELEASING_PURPLE2:
                     if (myTimer.milliseconds() > WAIT_SHUTTER_MILLISECONDS) {
                         currentState = BasketState.RELEASED_PURPLE2;
+                        hasPurple2 = false;
                     }
                     break;
                 case PRE_RELEASING_PURPLE1:
                     if (myTimer.milliseconds() > WAIT_SHUTTER_MILLISECONDS) {
                         myTimer.reset();
-                        basketServo.setPosition(120.0 / 300.0);
+                        turnServoTo(120.0 / 300.0);
                         currentState = BasketState.RELEASING_PURPLE1;
                     }
                     break;
@@ -231,6 +268,7 @@ public class TheArtifactBasketSystem {
                 case POST_RELEASING_PURPLE1:
                     if (myTimer.milliseconds() > WAIT_SHUTTER_MILLISECONDS) {
                         currentState = BasketState.RELEASED_PURPLE1;
+                        hasPurple1 = false;
                     }
                     break;
                 case FREE:
@@ -238,4 +276,6 @@ public class TheArtifactBasketSystem {
 
         }
     }
+
+    public BasketState getCurrentState() { return currentState;}
 }
