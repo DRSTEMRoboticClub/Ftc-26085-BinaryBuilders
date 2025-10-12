@@ -16,11 +16,13 @@ public class TheArtifactBasketSystem {
     public boolean hasGreen = false;
     public boolean hasPurple1 = false;
     public boolean hasPurple2 = false;
+    public boolean isIntakeShutterOpen = false;
+    public boolean isShooterShutterOpen = false;
 
     static public final int WAIT_SHUTTER_MILLISECONDS = 500;
     static public final int WAIT_BASKET_MILLISECONDS = 500;
 
-    ElapsedTime myTimer = new ElapsedTime();
+    private ElapsedTime myTimer = new ElapsedTime();
 
     public enum BasketState {
         RECEIVING_GREEN,
@@ -78,6 +80,7 @@ public class TheArtifactBasketSystem {
 
         shutter3.setPosition(1.0);
         shutter4.setPosition(1.0);
+        isIntakeShutterOpen = true;
     }
 
     public void CloseIntake() throws InterruptedException {
@@ -89,11 +92,13 @@ public class TheArtifactBasketSystem {
         Thread.sleep(100);
         shutter3.setPosition(0.0);
         shutter4.setPosition(0.0);
+        isIntakeShutterOpen = false;
     }
 
     public void OpenShooter() {
         shutter1.setPosition(1.0);
         shutter2.setPosition(1.0);
+        isShooterShutterOpen = true;
     }
 
     public void CloseShooter() throws InterruptedException {
@@ -105,48 +110,99 @@ public class TheArtifactBasketSystem {
         Thread.sleep(100);
         shutter1.setPosition(0.0);
         shutter2.setPosition(0.0);
+        isShooterShutterOpen = false;
     }
 
     public void ReleasePurple2() throws InterruptedException {
-        CloseIntake();
-        CloseShooter();
+        if (isIntakeShutterOpen || isShooterShutterOpen)
+        {
+            CloseIntake();
+            CloseShooter();
+            currentState = BasketState.PRE_RELEASING_PURPLE2;
+        }
+        else
+        {
+            turnServoTo(0.0);
+            currentState = BasketState.RELEASING_PURPLE2;
+        }
+
         myTimer.reset();
-        currentState = BasketState.PRE_RELEASING_PURPLE2;
+
     }
 
     public void ReleasePurple1() throws InterruptedException {
-        CloseIntake();
-        CloseShooter();
+        if (isIntakeShutterOpen || isShooterShutterOpen)
+        {
+            CloseIntake();
+            CloseShooter();
+            currentState = BasketState.PRE_RELEASING_PURPLE1;
+        }
+        else
+        {
+            turnServoTo(120.0 / 300.0);
+            currentState = BasketState.RELEASING_PURPLE1;
+        }
         myTimer.reset();
-        currentState = BasketState.PRE_RELEASING_PURPLE1;
     }
 
     public void ReleaseGreen() throws InterruptedException {
-        CloseIntake();
-        CloseShooter();
+        if (isIntakeShutterOpen || isShooterShutterOpen)
+        {
+            CloseIntake();
+            CloseShooter();
+            currentState = BasketState.PRE_RELEASING_GREEN;
+        }
+        else
+        {
+            turnServoTo(250.0 / 300.0);
+            currentState = BasketState.RELEASING_GREEN;
+        }
         myTimer.reset();
-        currentState = BasketState.PRE_RELEASING_GREEN;
     }
 
     public void ReceiveGreen() throws InterruptedException {
-        CloseIntake();
-        CloseShooter();
+        if (isIntakeShutterOpen || isShooterShutterOpen)
+        {
+            CloseIntake();
+            CloseShooter();
+            currentState = BasketState.PRE_RECEIVING_GREEN;
+        }
+        else
+        {
+            turnServoTo(58.0 / 300.0);
+            currentState = BasketState.RECEIVING_GREEN;
+        }
         myTimer.reset();
-        currentState = BasketState.PRE_RECEIVING_GREEN;
     }
 
     public void ReceivePurple2() throws InterruptedException {
-        CloseIntake();
-        CloseShooter();
+        if (isIntakeShutterOpen || isShooterShutterOpen)
+        {
+            CloseIntake();
+            CloseShooter();
+            currentState = BasketState.PRE_RECEIVING_PURPLE2;
+        }
+        else
+        {
+            turnServoTo(185.0 / 300.0);
+            currentState = BasketState.RECEIVING_PURPLE2;
+        }
         myTimer.reset();
-        currentState = BasketState.PRE_RECEIVING_PURPLE2;
     }
 
     public void ReceivePurple1() throws InterruptedException {
-        CloseIntake();
-        CloseShooter();
+        if (isIntakeShutterOpen || isShooterShutterOpen)
+        {
+            CloseIntake();
+            CloseShooter();
+            currentState = BasketState.PRE_RECEIVING_PURPLE1;
+        }
+        else
+        {
+            turnServoTo(1.0);
+            currentState = BasketState.RECEIVING_PURPLE1;
+        }
         myTimer.reset();
-        currentState = BasketState.PRE_RECEIVING_PURPLE1;
     }
 
     public void Update() throws InterruptedException {

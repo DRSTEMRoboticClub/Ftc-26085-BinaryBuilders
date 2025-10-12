@@ -97,6 +97,7 @@ public class FTC2025DecodeTeleOps extends LinearOpMode {
 
             telemetry.update();
             basketSystem.Update();
+            intakeSystem.Update();
         }
     }
 }
