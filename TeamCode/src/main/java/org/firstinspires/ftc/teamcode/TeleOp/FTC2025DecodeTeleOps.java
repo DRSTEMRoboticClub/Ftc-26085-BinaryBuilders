@@ -20,6 +20,7 @@ import org.firstinspires.ftc.robotcore.external.navigation.AxesOrder;
 import org.firstinspires.ftc.robotcore.external.navigation.AxesReference;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Orientation;
+import org.firstinspires.ftc.teamcode.Tools.CameraController;
 import org.firstinspires.ftc.teamcode.Tools.TheArtifactBasketSystem;
 import org.firstinspires.ftc.teamcode.Tools.TheIntakeSystem;
 import org.firstinspires.ftc.teamcode.Tools.TheShooterSystem;
@@ -42,6 +43,8 @@ public class FTC2025DecodeTeleOps extends LinearOpMode {
     private GamepadEx driveGamepad;
     private MecanumDrive drive;
 
+    private CameraController cameraController;
+
     private ColorRangeSensor colour_sensor;
 
     private IMU imu;
@@ -53,6 +56,7 @@ public class FTC2025DecodeTeleOps extends LinearOpMode {
         Servo the_shutter2 = hardwareMap.get(Servo.class, "shutter2");
         Servo the_shutter3 = hardwareMap.get(Servo.class, "shutter3");
         Servo the_shutter4 = hardwareMap.get(Servo.class, "shutter4");
+        Servo the_camera_servo = hardwareMap.get(Servo.class, "cameraServo");
         shooter_left = new MotorEx(hardwareMap, "shooterleft");
         shooter_right = new MotorEx(hardwareMap, "shooterright");
         shooter_left.setRunMode(Motor.RunMode.VelocityControl);
@@ -68,6 +72,7 @@ public class FTC2025DecodeTeleOps extends LinearOpMode {
         basketSystem = new TheArtifactBasketSystem(the_basket_servo, the_shutter1, the_shutter2, the_shutter3, the_shutter4);
         intakeSystem = new TheIntakeSystem(intake_motor_left, intake_motor_right, intake_servo, basketSystem, colour_sensor);
         shooterSystem = new TheShooterSystem(basketSystem, shooter_left, shooter_right);
+        cameraController = new CameraController(the_camera_servo);
         frontLeft = new MotorEx(hardwareMap, "frontleft");
         frontRight = new MotorEx(hardwareMap, "frontright");
         backLeft = new MotorEx(hardwareMap, "backleft");
@@ -145,6 +150,18 @@ public class FTC2025DecodeTeleOps extends LinearOpMode {
             }
             if (gamepad1.right_bumper) {
                 //rotate basket right
+            }
+
+            if (gamepad1.dpad_up) {
+                cameraController.Up();
+            }
+
+            if (gamepad1.dpad_down) {
+                cameraController.Down();
+            }
+
+            if (gamepad1.dpad_right) {
+                cameraController.Front();
             }
 
             if (gamepad2.a)
