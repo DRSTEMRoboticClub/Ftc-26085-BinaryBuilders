@@ -1,6 +1,7 @@
 package org.firstinspires.ftc.teamcode.Tools;
 
 import com.arcrobotics.ftclib.hardware.motors.Motor;
+import com.arcrobotics.ftclib.hardware.motors.MotorEx;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
 public class TheShooterSystem {
@@ -21,7 +22,7 @@ public class TheShooterSystem {
         SHOOTING_PURPLE2
     }
 
-    TheShooterSystem(TheArtifactBasketSystem basket, Motor leftMotor, Motor rightMotor) {
+    public TheShooterSystem(TheArtifactBasketSystem basket, MotorEx leftMotor, MotorEx rightMotor) {
         basketSystem = basket;
         shooterMotorLeft = leftMotor;
         shooterMotorRight = rightMotor;
