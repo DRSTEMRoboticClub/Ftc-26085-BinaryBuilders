@@ -72,7 +72,7 @@ public class FTC2025DecodeTeleOps extends LinearOpMode {
         basketSystem = new TheArtifactBasketSystem(the_basket_servo, the_shutter1, the_shutter2, the_shutter3, the_shutter4);
         intakeSystem = new TheIntakeSystem(intake_motor_left, intake_motor_right, intake_servo, basketSystem, colour_sensor);
         shooterSystem = new TheShooterSystem(basketSystem, shooter_left, shooter_right);
-        cameraController = new CameraController(the_camera_servo);
+        cameraController = new CameraController(the_camera_servo, hardwareMap, telemetry);
         frontLeft = new MotorEx(hardwareMap, "frontleft");
         frontRight = new MotorEx(hardwareMap, "frontright");
         backLeft = new MotorEx(hardwareMap, "backleft");
