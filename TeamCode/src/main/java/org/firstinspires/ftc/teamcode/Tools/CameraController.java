@@ -5,7 +5,6 @@ import com.qualcomm.robotcore.hardware.Servo;
 import android.graphics.Color;
 import android.util.Size;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
-import org.firstinspires.ftc.robotcore.external.hardware.camera.Camera;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
 import org.firstinspires.ftc.robotcore.external.navigation.Pose3D;
 import org.firstinspires.ftc.vision.VisionPortal;
@@ -19,6 +18,8 @@ import org.firstinspires.ftc.robotcore.external.navigation.Position;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
+
+import java.util.ArrayList;
 import java.util.List;
 
 public class CameraController {
@@ -97,14 +98,11 @@ public class CameraController {
 
         visionPortal = new VisionPortal.Builder()
                 .addProcessors(purpleLocator, greenLocator, aprilTagLocator)
-                .setCameraResolution(new Size(320, 240))
+                .setCameraResolution(new Size(640, 480))
                 .setCamera(hardwareMap.get(WebcamName.class, "Webcam 1"))
                 .build();
 
-        telemetry.setMsTransmissionInterval(100);   // Speed up telemetry updates for debugging.
-        telemetry.setDisplayFormat(Telemetry.DisplayFormat.MONOSPACE);
-
-        swithMode(Mode.TAG_MODE);
+        swithMode(Mode.BLOB_MODE_UP);
     }
 
     public void Down() {
@@ -112,7 +110,7 @@ public class CameraController {
     }
 
     public void Up() {
-        cameraServo.setPosition(0.15);
+        cameraServo.setPosition(0.2);
     }
 
     public void Front() {
@@ -124,17 +122,17 @@ public class CameraController {
             case TAG_MODE:
                 Front();
                 cameraMode = Mode.TAG_MODE;
-                visionPortal.stopStreaming();
+                //visionPortal.stopStreaming();
                 break;
             case BLOB_MODE_UP:
                 Up();
                 cameraMode = Mode.BLOB_MODE_UP;
-                visionPortal.stopStreaming();
+                //visionPortal.stopStreaming();
                 break;
             case BLOB_MODE_DOWN:
                 Down();
                 cameraMode = Mode.BLOB_MODE_DOWN;
-                visionPortal.resumeStreaming();
+                //visionPortal.resumeStreaming();
                 break;
         }
     }
@@ -144,30 +142,32 @@ public class CameraController {
         double closest_distance = 0;
         double closest_x = 0;
         if (cameraMode != Mode.TAG_MODE) {
-            List<ColorBlobLocatorProcessor.Blob> blobs = purpleLocator.getBlobs();
+            List<ColorBlobLocatorProcessor.Blob> blobs = new ArrayList<>(purpleLocator.getBlobs());
             blobs.addAll(greenLocator.getBlobs());
+            screenLogger.addData("Blobs Number", blobs.size());
             ColorBlobLocatorProcessor.Util.filterByCriteria(
                     ColorBlobLocatorProcessor.BlobCriteria.BY_CONTOUR_AREA,
-                    50, 20000, blobs);  // filter out very small blobs.
-
+                    250, 200000, blobs);  // filter out very small blobs.
+            screenLogger.addData("Blobs Number1", blobs.size());
             ColorBlobLocatorProcessor.Util.filterByCriteria(
                     ColorBlobLocatorProcessor.BlobCriteria.BY_CIRCULARITY,
-                    0.6, 1, blobs);     /* filter out non-circular blobs.
+                    0.5, 1, blobs);     /* filter out non-circular blobs.
              * NOTE: You may want to adjust the minimum value depending on your use case.
              * Circularity values will be affected by shadows, and will therefore vary based
              * on the location of the camera on your robot and venue lighting. It is strongly
              * encouraged to test your vision on the competition field if your event allows
              * sensor calibration time.
              */
-
+            screenLogger.addData("Blobs Number2", blobs.size());
             for (ColorBlobLocatorProcessor.Blob blob : blobs) {
                 Circle circle = blob.getCircle();
-                if (circle.getY() > closest_distance) {
-                    closest_distance = circle.getY();
+                if (circle.getRadius() > closest_distance) {
+                    closest_distance = circle.getRadius();
                     closest_x = circle.getX();
                 }
             }
         }
+        screenLogger.addData("Blob", closest_x);
         return closest_x;
     }
 

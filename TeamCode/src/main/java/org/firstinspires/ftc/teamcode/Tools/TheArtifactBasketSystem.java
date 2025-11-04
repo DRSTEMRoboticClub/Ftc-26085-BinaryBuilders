@@ -1,7 +1,6 @@
 package org.firstinspires.ftc.teamcode.Tools;
 import com.qualcomm.robotcore.hardware.PwmControl;
 import com.qualcomm.robotcore.hardware.Servo;
-import com.qualcomm.robotcore.hardware.ServoImpl;
 import com.qualcomm.robotcore.hardware.ServoImplEx;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
@@ -20,7 +19,7 @@ public class TheArtifactBasketSystem {
     public boolean isShooterShutterOpen = false;
 
     static public final int WAIT_SHUTTER_MILLISECONDS = 750;
-    static public final int WAIT_BASKET_MILLISECONDS = 500;
+    static public final int WAIT_BASKET_MILLISECONDS = 750;
 
     static private final double GREEN_RECEIVE_POSITION = 60.0 / 300.0;
     static private final double PURPLE2_RECEIVE_POSITION = 180.0 / 300.0;
@@ -53,9 +52,6 @@ public class TheArtifactBasketSystem {
         RECEIVED_GREEN,
         RECEIVED_PURPLE2,
         RECEIVED_PURPLE1,
-        RELEASED_PURPLE2,
-        RELEASED_PURPLE1,
-        RELEASED_GREEN,
         FREE
     }
 
@@ -290,7 +286,7 @@ public class TheArtifactBasketSystem {
                     break;
                 case POST_RELEASING_GREEN:
                     if (myTimer.milliseconds() > WAIT_SHUTTER_MILLISECONDS) {
-                        currentState = BasketState.RELEASED_GREEN;
+                        currentState = BasketState.FREE;
                         hasGreen = false;
                     }
                     break;
@@ -310,7 +306,7 @@ public class TheArtifactBasketSystem {
                     break;
                 case POST_RELEASING_PURPLE2:
                     if (myTimer.milliseconds() > WAIT_SHUTTER_MILLISECONDS) {
-                        currentState = BasketState.RELEASED_PURPLE2;
+                        currentState = BasketState.FREE;
                         hasPurple2 = false;
                     }
                     break;
@@ -330,7 +326,7 @@ public class TheArtifactBasketSystem {
                     break;
                 case POST_RELEASING_PURPLE1:
                     if (myTimer.milliseconds() > WAIT_SHUTTER_MILLISECONDS) {
-                        currentState = BasketState.RELEASED_PURPLE1;
+                        currentState = BasketState.FREE;
                         hasPurple1 = false;
                     }
                     break;

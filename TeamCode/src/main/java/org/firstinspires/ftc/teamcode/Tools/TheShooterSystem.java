@@ -1,15 +1,14 @@
 package org.firstinspires.ftc.teamcode.Tools;
-
-import com.arcrobotics.ftclib.hardware.motors.Motor;
-import com.arcrobotics.ftclib.hardware.motors.MotorEx;
+import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
 public class TheShooterSystem {
     private final TheArtifactBasketSystem basketSystem;
-    private final Motor shooterMotorLeft;
-    private final Motor shooterMotorRight;
+    private final DcMotorEx shooterMotorLeft;
+    private final DcMotorEx shooterMotorRight;
 
-    static public final int SHOOTING_TIME = 1000;
+    static public final int SHOOTING_TIME = 2000;
 
     private ElapsedTime myTimer = new ElapsedTime();
 
@@ -17,33 +16,50 @@ public class TheShooterSystem {
 
     private enum ShooterState {
         IDLE,
-        SHOOTING_GREEN,
-        SHOOTING_PURPLE1,
-        SHOOTING_PURPLE2
+        RELEASING,
+        SHOOTING
     }
 
-    public TheShooterSystem(TheArtifactBasketSystem basket, MotorEx leftMotor, MotorEx rightMotor) {
+    public TheShooterSystem(TheArtifactBasketSystem basket, DcMotorEx leftMotor, DcMotorEx rightMotor) {
         basketSystem = basket;
         shooterMotorLeft = leftMotor;
         shooterMotorRight = rightMotor;
+
+    }
+
+    public void StartShooterMotors()
+    {
+        shooterMotorLeft.setVelocity(280);
+        shooterMotorRight.setVelocity(280);
+        shooterMotorLeft.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        shooterMotorRight.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+    }
+
+    public void StopShooterMotors()
+    {
+        shooterMotorLeft.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        shooterMotorRight.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
     }
 
     public void shootGreen() throws InterruptedException {
+        StartShooterMotors();
         basketSystem.ReleaseGreen();
         myTimer.reset();
-        currentState = ShooterState.SHOOTING_GREEN;
+        currentState = ShooterState.RELEASING;
     }
 
     public void shootPurple1() throws InterruptedException {
+        StartShooterMotors();
         basketSystem.ReleasePurple1();
         myTimer.reset();
-        currentState = ShooterState.SHOOTING_PURPLE1;
+        currentState = ShooterState.RELEASING;
     }
 
     public void shootPurple2() throws InterruptedException {
+        StartShooterMotors();
         basketSystem.ReleasePurple2();
         myTimer.reset();
-        currentState = ShooterState.SHOOTING_PURPLE2;
+        currentState = ShooterState.RELEASING;
     }
 
     public void Update() throws InterruptedException {
@@ -51,11 +67,16 @@ public class TheShooterSystem {
             case IDLE:
                 // Do nothing
                 break;
-            case SHOOTING_GREEN:
-            case SHOOTING_PURPLE1:
-            case SHOOTING_PURPLE2:
+            case RELEASING:
+                if (basketSystem.getCurrentState() == TheArtifactBasketSystem.BasketState.FREE)
+                {
+                    currentState = ShooterState.SHOOTING;
+                }
+                break;
+            case SHOOTING:
                 if (myTimer.milliseconds() >= SHOOTING_TIME) {
                     basketSystem.CloseShooter();
+                    StopShooterMotors();
                     currentState = ShooterState.IDLE;
                 }
                 break;

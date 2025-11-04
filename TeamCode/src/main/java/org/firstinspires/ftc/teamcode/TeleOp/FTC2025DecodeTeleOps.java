@@ -9,17 +9,15 @@ import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.ColorRangeSensor;
 import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.DcMotorEx;
+import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.hardware.Servo;
-import com.qualcomm.robotcore.hardware.ServoImpl;
 import com.qualcomm.robotcore.hardware.ServoImplEx;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
-import org.firstinspires.ftc.robotcore.external.navigation.AxesOrder;
-import org.firstinspires.ftc.robotcore.external.navigation.AxesReference;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
-import org.firstinspires.ftc.robotcore.external.navigation.Orientation;
 import org.firstinspires.ftc.teamcode.Tools.CameraController;
 import org.firstinspires.ftc.teamcode.Tools.TheArtifactBasketSystem;
 import org.firstinspires.ftc.teamcode.Tools.TheIntakeSystem;
@@ -33,8 +31,8 @@ public class FTC2025DecodeTeleOps extends LinearOpMode {
     private TheIntakeSystem intakeSystem;
 
     private TheShooterSystem shooterSystem;
-    private MotorEx shooter_left;
-    private MotorEx shooter_right;
+    private DcMotorEx shooter_left;
+    private DcMotorEx shooter_right;
 
     private MotorEx frontLeft;
     private MotorEx frontRight;
@@ -57,13 +55,13 @@ public class FTC2025DecodeTeleOps extends LinearOpMode {
         Servo the_shutter3 = hardwareMap.get(Servo.class, "shutter3");
         Servo the_shutter4 = hardwareMap.get(Servo.class, "shutter4");
         Servo the_camera_servo = hardwareMap.get(Servo.class, "cameraServo");
-        shooter_left = new MotorEx(hardwareMap, "shooterleft");
-        shooter_right = new MotorEx(hardwareMap, "shooterright");
-        shooter_left.setRunMode(Motor.RunMode.VelocityControl);
-        shooter_right.setRunMode(Motor.RunMode.VelocityControl);
-        shooter_left.setInverted(true);
-        shooter_left.setZeroPowerBehavior(Motor.ZeroPowerBehavior.FLOAT);
-        shooter_right.setZeroPowerBehavior(Motor.ZeroPowerBehavior.FLOAT);
+        shooter_left = (DcMotorEx)hardwareMap.get(DcMotor.class, "shooterleft");
+        shooter_right = (DcMotorEx)hardwareMap.get(DcMotor.class, "shooterright");
+        shooter_left.setDirection(DcMotorSimple.Direction.REVERSE);
+        shooter_left.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+        shooter_right.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+        shooter_left.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        shooter_right.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
         Motor intake_motor_left = new Motor(hardwareMap, "intakeleft");
         intake_motor_left.setInverted(true);
         Motor intake_motor_right = new Motor(hardwareMap, "intakeright");
@@ -85,16 +83,6 @@ public class FTC2025DecodeTeleOps extends LinearOpMode {
         RevHubOrientationOnRobot orientationOnRobot = new RevHubOrientationOnRobot(logoDirection, usbDirection);
         imu.initialize(new IMU.Parameters(orientationOnRobot));
         imu.resetYaw();
-    }
-
-    public void startShooterMotors() {
-        shooter_left.set(0.38);
-        shooter_right.set(0.38);
-    }
-
-    public void stopShooterMotors() {
-        shooter_left.set(0.0);
-        shooter_right.set(0.0);
     }
 
     @Override
@@ -127,12 +115,10 @@ public class FTC2025DecodeTeleOps extends LinearOpMode {
             }
 
             if (gamepad1.a) {
-                startShooterMotors();
                 shooterSystem.shootGreen();
             }
 
             if (gamepad1.b) {
-                startShooterMotors();
                 shooterSystem.shootPurple1();
             }
 
@@ -141,7 +127,6 @@ public class FTC2025DecodeTeleOps extends LinearOpMode {
             }
 
             if (gamepad1.y) {
-                startShooterMotors();
                 shooterSystem.shootPurple2();
             }
 
@@ -188,11 +173,7 @@ public class FTC2025DecodeTeleOps extends LinearOpMode {
             float[] hsv = new float[3];
             Color.RGBToHSV(red, green, blue, hsv);
 
-            // hsv[0] = hue, hsv[1] = saturation, hsv[2] = value
-            telemetry.addData("Hue: ", hsv[0]);
-            telemetry.addData("Saturation: ", hsv[1]);
-            telemetry.addData("Value: ", hsv[2]);
-            telemetry.addData("Yaw Angle", "%.2f", yaw);
+            cameraController.get_artifact_location();
 
 
             telemetry.update();
