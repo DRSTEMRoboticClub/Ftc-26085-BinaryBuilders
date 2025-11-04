@@ -8,7 +8,8 @@ public class TheShooterSystem {
     private final DcMotorEx shooterMotorLeft;
     private final DcMotorEx shooterMotorRight;
 
-    static public final int SHOOTING_TIME = 2000;
+    static private final int SHOOTING_TIME = 2000;
+    static private final int MOTOR_SPEED = 1450;
 
     private ElapsedTime myTimer = new ElapsedTime();
 
@@ -17,6 +18,7 @@ public class TheShooterSystem {
     private enum ShooterState {
         IDLE,
         RELEASING,
+        SPEEDUP,
         SHOOTING
     }
 
@@ -29,9 +31,9 @@ public class TheShooterSystem {
 
     public void StartShooterMotors()
     {
-        shooterMotorLeft.setVelocity(280);
-        shooterMotorRight.setVelocity(280);
+        shooterMotorLeft.setVelocity(MOTOR_SPEED);
         shooterMotorLeft.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        shooterMotorRight.setVelocity(MOTOR_SPEED);
         shooterMotorRight.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
     }
 
@@ -44,21 +46,18 @@ public class TheShooterSystem {
     public void shootGreen() throws InterruptedException {
         StartShooterMotors();
         basketSystem.ReleaseGreen();
-        myTimer.reset();
         currentState = ShooterState.RELEASING;
     }
 
     public void shootPurple1() throws InterruptedException {
         StartShooterMotors();
         basketSystem.ReleasePurple1();
-        myTimer.reset();
         currentState = ShooterState.RELEASING;
     }
 
     public void shootPurple2() throws InterruptedException {
         StartShooterMotors();
         basketSystem.ReleasePurple2();
-        myTimer.reset();
         currentState = ShooterState.RELEASING;
     }
 
@@ -70,7 +69,14 @@ public class TheShooterSystem {
             case RELEASING:
                 if (basketSystem.getCurrentState() == TheArtifactBasketSystem.BasketState.FREE)
                 {
+                    currentState = ShooterState.SPEEDUP;
+                    myTimer.reset();
+                }
+                break;
+            case SPEEDUP:
+                if (myTimer.milliseconds() >= 500) {
                     currentState = ShooterState.SHOOTING;
+                    myTimer.reset();
                 }
                 break;
             case SHOOTING:
