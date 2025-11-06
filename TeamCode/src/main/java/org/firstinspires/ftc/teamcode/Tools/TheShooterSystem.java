@@ -49,6 +49,17 @@ public class TheShooterSystem {
         currentState = ShooterState.RELEASING;
     }
 
+    public void shootPurple() throws InterruptedException {
+        if (basketSystem.hasPurple1)
+        {
+            shootPurple1();
+        }
+        else if (basketSystem.hasPurple2)
+        {
+            shootPurple2();
+        }
+    }
+
     public void shootPurple1() throws InterruptedException {
         StartShooterMotors();
         basketSystem.ReleasePurple1();
