@@ -157,4 +157,16 @@ public class TheIntakeSystem {
         intakeMotorRight.set(1.0);
         currentState = IntakeState.INTAKING;
     }
+
+    public void toggle_intake() throws InterruptedException
+    {
+        if (currentState == IntakeState.IDLE)
+        {
+            intake();
+        }
+        else
+        {
+            stopIntake();
+        }
+    }
 }

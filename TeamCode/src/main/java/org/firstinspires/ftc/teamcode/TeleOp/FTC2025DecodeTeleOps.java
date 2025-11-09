@@ -38,7 +38,8 @@ public class FTC2025DecodeTeleOps extends LinearOpMode {
     private MotorEx frontRight;
     private MotorEx backLeft;
     private MotorEx backRight;
-    private GamepadEx driveGamepad;
+    private GamepadEx driveGamepad1;
+    private GamepadEx driveGamepad2;
     private MecanumDrive drive;
 
     private CameraController cameraController;
@@ -63,8 +64,8 @@ public class FTC2025DecodeTeleOps extends LinearOpMode {
         shooter_left.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
         shooter_right.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
         Motor intake_motor_left = new Motor(hardwareMap, "intakeleft");
-        intake_motor_left.setInverted(true);
         Motor intake_motor_right = new Motor(hardwareMap, "intakeright");
+        intake_motor_right.setInverted(true);
         Servo intake_servo = hardwareMap.get(Servo.class, "intake");
         colour_sensor = (ColorRangeSensor) hardwareMap.colorSensor.get("colourblind");
         basketSystem = new TheArtifactBasketSystem(the_basket_servo, the_shutter1, the_shutter2, the_shutter3, the_shutter4);
@@ -76,7 +77,8 @@ public class FTC2025DecodeTeleOps extends LinearOpMode {
         backLeft = new MotorEx(hardwareMap, "backleft");
         backRight = new MotorEx(hardwareMap, "backright");
         drive = new MecanumDrive(frontLeft, frontRight, backLeft, backRight);
-        driveGamepad = new GamepadEx(gamepad1);
+        driveGamepad1 = new GamepadEx(gamepad1);
+        driveGamepad2 = new GamepadEx(gamepad2);
         imu = hardwareMap.get(IMU.class, "imu");
         RevHubOrientationOnRobot.LogoFacingDirection logoDirection = RevHubOrientationOnRobot.LogoFacingDirection.RIGHT;
         RevHubOrientationOnRobot.UsbFacingDirection usbDirection = RevHubOrientationOnRobot.UsbFacingDirection.BACKWARD;
@@ -99,19 +101,24 @@ public class FTC2025DecodeTeleOps extends LinearOpMode {
 
             YawPitchRollAngles orientation = imu.getRobotYawPitchRollAngles();
             double yaw = orientation.getYaw(AngleUnit.DEGREES);
+            double speed = gamepad1.right_bumper || gamepad2.right_bumper ? 0.15 : 0.8;
 
-            if (!gamepad1.right_bumper) {
-                drive.driveFieldCentric(
-                        -driveGamepad.getLeftX()*0.8,
-                        -driveGamepad.getLeftY()*0.8,
-                        -driveGamepad.getRightX()*0.8,
-                        yaw);
-            } else {
-                drive.driveFieldCentric(
-                        -driveGamepad.getLeftX()*0.15,
-                        -driveGamepad.getLeftY()*0.15,
-                        -driveGamepad.getRightX()*0.15,
-                        yaw);
+            if (driveGamepad1.getLeftX() != 0.0
+                    || driveGamepad1.getLeftY() != 0.0
+                    || driveGamepad1.getRightX() != 0.0) {
+                drive.driveRobotCentric(-driveGamepad1.getLeftX() * speed,
+                        -driveGamepad1.getLeftY() * speed,
+                        -driveGamepad1.getRightX() * speed);
+            }
+            else {
+                drive.driveRobotCentric(driveGamepad2.getLeftX() * speed,
+                        driveGamepad2.getLeftY() * speed, -driveGamepad2.getRightX() * speed);
+            }
+
+            if (gamepad1.left_bumper || gamepad2.left_bumper)
+            {
+                basketSystem.OpenIntake();
+                basketSystem.OpenShooter();
             }
 
             if (gamepad1.a) {
@@ -122,12 +129,13 @@ public class FTC2025DecodeTeleOps extends LinearOpMode {
                 shooterSystem.shootPurple1();
             }
 
-            if (gamepad1.x) {
-                intakeSystem.intake();
-            }
-
             if (gamepad1.y) {
                 shooterSystem.shootPurple2();
+            }
+
+            if (gamepad2.x) {
+                intakeSystem.toggle_intake();
+                Thread.sleep(100);
             }
 
             if (gamepad1.left_bumper) {
@@ -148,22 +156,6 @@ public class FTC2025DecodeTeleOps extends LinearOpMode {
             if (gamepad1.dpad_right) {
                 cameraController.Front();
             }
-
-            if (gamepad2.a)
-            {
-                basketSystem.ReleasePurple1();
-            }
-
-            if (gamepad2.b)
-            {
-                basketSystem.ReleasePurple2();
-            }
-
-            if (gamepad2.x)
-            {
-                basketSystem.ReleaseGreen();
-            }
-
 
             telemetry.addData("Distance: ", colour_sensor.getDistance(DistanceUnit.CM));
             int red = colour_sensor.red();

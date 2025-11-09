@@ -102,7 +102,7 @@ public class CameraController {
                 .setCamera(hardwareMap.get(WebcamName.class, "Webcam 1"))
                 .build();
 
-        swithMode(Mode.BLOB_MODE_UP);
+        swithMode(Mode.TAG_MODE);
     }
 
     public void Down() {

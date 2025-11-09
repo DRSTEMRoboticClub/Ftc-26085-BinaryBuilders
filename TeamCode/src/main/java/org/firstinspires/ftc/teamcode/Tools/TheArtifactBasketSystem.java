@@ -15,8 +15,8 @@ public class TheArtifactBasketSystem {
     public boolean hasGreen = false;
     public boolean hasPurple1 = false;
     public boolean hasPurple2 = false;
-    public boolean isIntakeShutterOpen = false;
-    public boolean isShooterShutterOpen = false;
+    public boolean isIntakeShutterOpen = true;
+    public boolean isShooterShutterOpen = true;
 
     static public final int WAIT_SHUTTER_MILLISECONDS = 750;
     static public final int WAIT_BASKET_MILLISECONDS = 750;
@@ -80,22 +80,23 @@ public class TheArtifactBasketSystem {
     }
 
     public void OpenIntake() throws InterruptedException {
-
         shutter3.setPosition(1.0);
         shutter4.setPosition(1.0);
         isIntakeShutterOpen = true;
     }
 
     public void CloseIntake() throws InterruptedException {
-        if (servoPosition + 0.1 <= 1.0) {
-            turnServoTo(servoPosition + 0.1);
-        } else {
-            turnServoTo(servoPosition - 0.1);
-        }
+        if (isIntakeShutterOpen) {
+            if (servoPosition + 0.1 <= 1.0) {
+                turnServoTo(servoPosition + 0.1);
+            } else {
+                turnServoTo(servoPosition - 0.1);
+            }
         Thread.sleep(100);
         shutter3.setPosition(0.0);
         shutter4.setPosition(0.0);
         isIntakeShutterOpen = false;
+        }
     }
 
     public void OpenShooter() {
@@ -105,22 +106,19 @@ public class TheArtifactBasketSystem {
     }
 
     public void CloseShooter() throws InterruptedException {
-        if (servoPosition + 0.1 <= 1.0) {
-            turnServoTo(servoPosition + 0.1);
-        } else {
-            turnServoTo(servoPosition - 0.1);
+        if (isShooterShutterOpen) {
+            Thread.sleep(100);
+            shutter1.setPosition(0.0);
+            shutter2.setPosition(0.0);
+            isShooterShutterOpen = false;
         }
-        Thread.sleep(100);
-        shutter1.setPosition(0.0);
-        shutter2.setPosition(0.0);
-        isShooterShutterOpen = false;
     }
 
     public void ReleasePurple2() throws InterruptedException {
         if (isIntakeShutterOpen || isShooterShutterOpen)
         {
-            CloseIntake();
             CloseShooter();
+            CloseIntake();
             currentState = BasketState.PRE_RELEASING_PURPLE2;
         }
         else
@@ -136,8 +134,8 @@ public class TheArtifactBasketSystem {
     public void ReleasePurple1() throws InterruptedException {
         if (isIntakeShutterOpen || isShooterShutterOpen)
         {
-            CloseIntake();
             CloseShooter();
+            CloseIntake();
             currentState = BasketState.PRE_RELEASING_PURPLE1;
         }
         else
@@ -151,8 +149,8 @@ public class TheArtifactBasketSystem {
     public void ReleaseGreen() throws InterruptedException {
         if (isIntakeShutterOpen || isShooterShutterOpen)
         {
-            CloseIntake();
             CloseShooter();
+            CloseIntake();
             currentState = BasketState.PRE_RELEASING_GREEN;
         }
         else
