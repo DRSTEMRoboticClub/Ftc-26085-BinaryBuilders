@@ -158,30 +158,47 @@ public class MecanumDrivetrain {
     }
 
     public Boolean intake(double distance, double speed) throws InterruptedException {
-        intake.intake();
         camera.swithMode(CameraController.Mode.BLOB_MODE_DOWN);
+        double artifact_location = camera.get_artifact_location();
+        while (artifact_location == 0)
+        {
+            drive.driveRobotCentric(0, speed, 0);
+            artifact_location = camera.get_artifact_location();
+        }
+        drive.stop();
+        while (Math.abs(artifact_location - vision_ball_centre) > 10)
+        {
+            artifact_location = camera.get_artifact_location();
+            double error = artifact_location - vision_ball_centre;
+            error /= 320;
+            error *= speed;
+            if (Math.abs(error) < 0.05)
+            {
+                error = error / Math.abs(error) * 0.05;
+            }
+            else if (Math.abs(error) > speed)
+            {
+                error = error / Math.abs(error) * speed;
+            }
+            drive.driveRobotCentric(-error, 0, 0);
+            Thread.sleep(20);
+        }
+        intake.intake();
+
         for (int i = 0; i < distance; i += 10)
         {
-            double correction = camera.get_artifact_location();
-            correction -= vision_ball_centre;
-            correction /= 640;
-            correction *= 45;
-            left(speed, correction);
-            drive_backward(speed, 15);
-            Thread.sleep(100);
+            drive_backward(speed, 10);
             if (intake.getCurrentState() != TheIntakeSystem.IntakeState.INTAKING)
             {
                 return true;
             }
+            for (int j = 0; j < 5; j++)
+            {
+                intake.Update();
+                Thread.sleep(20);
+            }
         }
-        if (intake.getCurrentState() != TheIntakeSystem.IntakeState.INTAKING)
-        {
-            return true;
-        }
-        else
-        {
-            intake.stopIntake();
-            return false;
-        }
+        intake.stopIntake();
+        return false;
     }
 }
