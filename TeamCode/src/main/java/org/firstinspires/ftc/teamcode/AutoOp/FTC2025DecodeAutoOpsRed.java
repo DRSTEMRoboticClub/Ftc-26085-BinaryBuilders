@@ -1,12 +1,17 @@
-package org.firstinspires.ftc.teamcode.TeleOp;
+package org.firstinspires.ftc.teamcode.AutoOp;
 
 import com.arcrobotics.ftclib.drivebase.MecanumDrive;
 import com.arcrobotics.ftclib.gamepad.GamepadEx;
+import com.arcrobotics.ftclib.geometry.Pose2d;
+import com.arcrobotics.ftclib.geometry.Rotation2d;
+import com.arcrobotics.ftclib.geometry.Translation2d;
 import com.arcrobotics.ftclib.hardware.motors.Motor;
 import com.arcrobotics.ftclib.hardware.motors.MotorEx;
+import com.arcrobotics.ftclib.kinematics.wpilibkinematics.MecanumDriveKinematics;
+import com.arcrobotics.ftclib.kinematics.wpilibkinematics.MecanumDriveOdometry;
 import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
+import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.ColorRangeSensor;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
@@ -14,18 +19,17 @@ import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.ServoImplEx;
-import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
-import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.teamcode.Tools.CameraController;
 import org.firstinspires.ftc.teamcode.Tools.TheArtifactBasketSystem;
 import org.firstinspires.ftc.teamcode.Tools.TheIntakeSystem;
 import org.firstinspires.ftc.teamcode.Tools.TheShooterSystem;
-import android.graphics.Color;
 
-@TeleOp
-public class FTC2025DecodeTeleOps extends LinearOpMode {
+
+
+@Autonomous
+public class FTC2025DecodeAutoOpsRed extends LinearOpMode {
 
     private TheArtifactBasketSystem basketSystem;
     private TheIntakeSystem intakeSystem;
@@ -38,18 +42,26 @@ public class FTC2025DecodeTeleOps extends LinearOpMode {
     private MotorEx frontRight;
     private MotorEx backLeft;
     private MotorEx backRight;
-    private GamepadEx driveGamepad1;
-    private GamepadEx driveGamepad2;
     private MecanumDrive drive;
-
     private CameraController cameraController;
-
     private ColorRangeSensor colour_sensor;
-
     private IMU imu;
 
-    // Initialise robot hardware
-    public void initialise() throws InterruptedException {
+    private MecanumDriveKinematics kinematics;
+    private MecanumDriveOdometry odometry;
+
+    private void initialiseOdometry()
+    {
+        Translation2d frontLeftLocation = new Translation2d(-0.168, 0.168);
+        Translation2d frontRightLocation = new Translation2d(0.168, 0.168);
+        Translation2d backLeftLocation = new Translation2d(-0.168, -0.168);
+        Translation2d backRightLocation = new Translation2d(0.168, -0.168);
+        kinematics = new MecanumDriveKinematics(frontLeftLocation, frontRightLocation, backLeftLocation, backRightLocation);
+        odometry = new MecanumDriveOdometry(kinematics, new Rotation2d(imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS)), new Pose2d(5.0, 13.5, new Rotation2d()));
+    }
+
+    private void initialisation() throws InterruptedException
+    {
         ServoImplEx the_basket_servo = hardwareMap.get(ServoImplEx.class, "basket");
         Servo the_shutter1 = hardwareMap.get(Servo.class, "shutter1");
         Servo the_shutter2 = hardwareMap.get(Servo.class, "shutter2");
@@ -64,8 +76,8 @@ public class FTC2025DecodeTeleOps extends LinearOpMode {
         shooter_left.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
         shooter_right.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
         Motor intake_motor_left = new Motor(hardwareMap, "intakeleft");
+        intake_motor_left.setInverted(true);
         Motor intake_motor_right = new Motor(hardwareMap, "intakeright");
-        intake_motor_right.setInverted(true);
         Servo intake_servo = hardwareMap.get(Servo.class, "intake");
         colour_sensor = (ColorRangeSensor) hardwareMap.colorSensor.get("colourblind");
         basketSystem = new TheArtifactBasketSystem(the_basket_servo, the_shutter1, the_shutter2, the_shutter3, the_shutter4);
@@ -77,101 +89,26 @@ public class FTC2025DecodeTeleOps extends LinearOpMode {
         backLeft = new MotorEx(hardwareMap, "backleft");
         backRight = new MotorEx(hardwareMap, "backright");
         drive = new MecanumDrive(frontLeft, frontRight, backLeft, backRight);
-        driveGamepad1 = new GamepadEx(gamepad1);
-        driveGamepad2 = new GamepadEx(gamepad2);
         imu = hardwareMap.get(IMU.class, "imu");
         RevHubOrientationOnRobot.LogoFacingDirection logoDirection = RevHubOrientationOnRobot.LogoFacingDirection.RIGHT;
         RevHubOrientationOnRobot.UsbFacingDirection usbDirection = RevHubOrientationOnRobot.UsbFacingDirection.BACKWARD;
         RevHubOrientationOnRobot orientationOnRobot = new RevHubOrientationOnRobot(logoDirection, usbDirection);
         imu.initialize(new IMU.Parameters(orientationOnRobot));
+        imu.resetYaw();
     }
 
     @Override
     public void runOpMode() throws InterruptedException {
 
         // Robot initialisation
-        initialise();
+        initialisation();
 
         waitForStart();
 
         if (isStopRequested()) return;
 
-        while (opModeIsActive()) {
+        if (opModeIsActive()) {
 
-            YawPitchRollAngles orientation = imu.getRobotYawPitchRollAngles();
-            double yaw = orientation.getYaw(AngleUnit.DEGREES);
-            double speed = gamepad1.right_bumper || gamepad2.right_bumper ? 0.15 : 0.8;
-
-            if (driveGamepad1.getLeftX() != 0.0
-                    || driveGamepad1.getLeftY() != 0.0
-                    || driveGamepad1.getRightX() != 0.0) {
-                drive.driveRobotCentric(-driveGamepad1.getLeftX() * speed,
-                        -driveGamepad1.getLeftY() * speed,
-                        -driveGamepad1.getRightX() * speed);
-            }
-            else {
-                drive.driveRobotCentric(driveGamepad2.getLeftX() * speed,
-                        driveGamepad2.getLeftY() * speed, -driveGamepad2.getRightX() * speed);
-            }
-
-            if (gamepad1.left_bumper || gamepad2.left_bumper)
-            {
-                basketSystem.OpenIntake();
-                basketSystem.OpenShooter();
-            }
-
-            if (gamepad1.a) {
-                shooterSystem.shootGreen();
-            }
-
-            if (gamepad1.b) {
-                shooterSystem.shootPurple1();
-            }
-
-            if (gamepad1.y) {
-                shooterSystem.shootPurple2();
-            }
-
-            if (gamepad2.x) {
-                intakeSystem.toggle_intake();
-                Thread.sleep(100);
-            }
-
-            if (gamepad1.left_bumper) {
-                //rotate basket left
-            }
-            if (gamepad1.right_bumper) {
-                //rotate basket right
-            }
-
-            if (gamepad1.dpad_up) {
-                cameraController.Up();
-            }
-
-            if (gamepad1.dpad_down) {
-                cameraController.Down();
-            }
-
-            if (gamepad1.dpad_right) {
-                cameraController.Front();
-            }
-
-            telemetry.addData("Distance: ", colour_sensor.getDistance(DistanceUnit.CM));
-            int red = colour_sensor.red();
-            int green = colour_sensor.green();
-            int blue = colour_sensor.blue();
-
-            float[] hsv = new float[3];
-            Color.RGBToHSV(red, green, blue, hsv);
-
-            cameraController.get_artifact_location();
-
-
-            telemetry.update();
-            basketSystem.Update();
-            intakeSystem.Update();
-            shooterSystem.Update();
         }
     }
 }
- 
