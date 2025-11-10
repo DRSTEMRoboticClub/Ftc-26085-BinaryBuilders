@@ -34,8 +34,7 @@ public class FTC2025DecodeAutoOpsBlue extends LinearOpMode {
 
     private MecanumDrivetrain drivetrain;
 
-
-
+    private Integer sequenceId = 0;
     private void initialisation() throws InterruptedException
     {
         ServoImplEx the_basket_servo = hardwareMap.get(ServoImplEx.class, "basket");
@@ -64,6 +63,39 @@ public class FTC2025DecodeAutoOpsBlue extends LinearOpMode {
 
     }
 
+    private void shootSequence() throws InterruptedException
+    {
+        switch (sequenceId)
+        {
+            case 21:
+                shooterSystem.shootGreen();
+                while (shooterSystem.getCurrentState() != TheShooterSystem.ShooterState.IDLE) {shooterSystem.Update();}
+                shooterSystem.shootPurple();
+                while (shooterSystem.getCurrentState() != TheShooterSystem.ShooterState.IDLE) {shooterSystem.Update();}
+                shooterSystem.shootPurple();
+                while (shooterSystem.getCurrentState() != TheShooterSystem.ShooterState.IDLE) {shooterSystem.Update();}
+                break;
+            case 22:
+                shooterSystem.shootPurple();
+                while (shooterSystem.getCurrentState() != TheShooterSystem.ShooterState.IDLE) {shooterSystem.Update();}
+                shooterSystem.shootGreen();
+                while (shooterSystem.getCurrentState() != TheShooterSystem.ShooterState.IDLE) {shooterSystem.Update();}
+                shooterSystem.shootPurple();
+                while (shooterSystem.getCurrentState() != TheShooterSystem.ShooterState.IDLE) {shooterSystem.Update();}
+                break;
+            case 23:
+                shooterSystem.shootPurple();
+                while (shooterSystem.getCurrentState() != TheShooterSystem.ShooterState.IDLE) {shooterSystem.Update();}
+                shooterSystem.shootPurple();
+                while (shooterSystem.getCurrentState() != TheShooterSystem.ShooterState.IDLE) {shooterSystem.Update();}
+                shooterSystem.shootGreen();
+                while (shooterSystem.getCurrentState() != TheShooterSystem.ShooterState.IDLE) {shooterSystem.Update();}
+                break;
+            default:
+                break;
+        }
+    }
+
     @Override
     public void runOpMode() throws InterruptedException {
 
@@ -75,7 +107,14 @@ public class FTC2025DecodeAutoOpsBlue extends LinearOpMode {
         if (isStopRequested()) return;
 
         if (opModeIsActive()) {
-            drivetrain.turn_to(45, 0.5, 2);
+            sequenceId = cameraController.get_mission_tag();
+            drivetrain.drive_forward(0.8, 2400);
+            if (sequenceId == 0)
+            {
+                sequenceId = cameraController.get_mission_tag();
+            }
+            drivetrain.turn_to(-45, 0.8, 2);
+            shootSequence();
         }
     }
 }

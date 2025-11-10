@@ -15,7 +15,12 @@ public class TheShooterSystem {
 
     private ShooterState currentState = ShooterState.IDLE;
 
-    private enum ShooterState {
+    public ShooterState getCurrentState() {
+        return currentState;
+    }
+
+
+    public enum ShooterState {
         IDLE,
         RELEASING,
         SPEEDUP,
