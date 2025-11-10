@@ -8,6 +8,8 @@ import com.qualcomm.robotcore.hardware.IMU;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
+import org.firstinspires.ftc.teamcode.Tools.CameraController;
+import org.firstinspires.ftc.teamcode.Tools.TheIntakeSystem;
 
 public class MecanumDrivetrain {
 
@@ -15,9 +17,15 @@ public class MecanumDrivetrain {
     private final Motor frontLeft, frontRight, backLeft, backRight;
     private final IMU imu;
 
+    private final TheIntakeSystem intake;
+
     private final Telemetry logger;
 
-    public MecanumDrivetrain(HardwareMap hardwareMap, Telemetry telemetry) {
+    private final CameraController camera;
+
+    static private final int vision_ball_centre = 320;
+
+    public MecanumDrivetrain(HardwareMap hardwareMap, Telemetry telemetry, CameraController cam, TheIntakeSystem inta) {
         frontLeft  = new Motor(hardwareMap, "frontleft");
         frontRight = new Motor(hardwareMap, "frontright");
         backLeft   = new Motor(hardwareMap, "backleft");
@@ -27,6 +35,8 @@ public class MecanumDrivetrain {
         backRight.setDistancePerPulse(0.608);
         backLeft.setDistancePerPulse(0.608);
         logger = telemetry;
+        camera = cam;
+        intake = inta;
 
 
         drive = new MecanumDrive(frontLeft, frontRight, backLeft, backRight);
@@ -143,5 +153,33 @@ public class MecanumDrivetrain {
 
     public void stop() {
         drive.stop();
+    }
+
+    public Boolean intake(double distance, double speed) throws InterruptedException {
+        intake.intake();
+        camera.swithMode(CameraController.Mode.BLOB_MODE_DOWN);
+        for (int i = 0; i < distance; i += 10)
+        {
+            double correction = camera.get_artifact_location();
+            correction -= vision_ball_centre;
+            correction /= 640;
+            correction *= 450;
+            right(speed, correction);
+            drive_backward(speed, 10);
+            Thread.sleep(100);
+            if (intake.getCurrentState() != TheIntakeSystem.IntakeState.INTAKING)
+            {
+                return true;
+            }
+        }
+        if (intake.getCurrentState() != TheIntakeSystem.IntakeState.INTAKING)
+        {
+            return true;
+        }
+        else
+        {
+            intake.stopIntake();
+            return false;
+        }
     }
 }

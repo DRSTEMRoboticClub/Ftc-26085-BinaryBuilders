@@ -21,7 +21,7 @@ public class TheIntakeSystem {
     static public final int INTAKE_TIME = 300;
     static public final int CLOSING_TIME = 500;
 
-    private enum IntakeState {
+    public enum IntakeState {
         IDLE,
         INTAKING,
         LOADING_GREEN,
@@ -33,6 +33,11 @@ public class TheIntakeSystem {
     }
 
     private IntakeState currentState = IntakeState.IDLE;
+
+    public IntakeState getCurrentState() {
+        return currentState;
+    }
+
 
     public TheIntakeSystem(Motor leftMotor, Motor rightMotor, Servo servo, TheArtifactBasketSystem basket, ColorRangeSensor colour) {
         intakeMotorLeft = leftMotor;

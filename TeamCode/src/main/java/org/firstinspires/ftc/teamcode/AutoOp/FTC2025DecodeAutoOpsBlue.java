@@ -59,7 +59,7 @@ public class FTC2025DecodeAutoOpsBlue extends LinearOpMode {
         intakeSystem = new TheIntakeSystem(intake_motor_left, intake_motor_right, intake_servo, basketSystem, colour_sensor);
         shooterSystem = new TheShooterSystem(basketSystem, shooter_left, shooter_right);
         cameraController = new CameraController(the_camera_servo, hardwareMap, telemetry);
-        drivetrain = new MecanumDrivetrain(hardwareMap, telemetry);
+        drivetrain = new MecanumDrivetrain(hardwareMap, telemetry, cameraController, intakeSystem);
 
     }
 
@@ -107,6 +107,7 @@ public class FTC2025DecodeAutoOpsBlue extends LinearOpMode {
         if (isStopRequested()) return;
 
         if (opModeIsActive()) {
+            /*
             sequenceId = cameraController.get_mission_tag();
             telemetry.addData("Mission Tag: ", sequenceId);
             telemetry.update();
@@ -156,6 +157,8 @@ public class FTC2025DecodeAutoOpsBlue extends LinearOpMode {
             drivetrain.turn_to(90, 0.5, 2);
             drivetrain.turn_to(90, 0.2, 2);
             drivetrain.right(0.6, 600);
+            */
+            drivetrain.intake(150, 0.3);
         }
     }
 }
