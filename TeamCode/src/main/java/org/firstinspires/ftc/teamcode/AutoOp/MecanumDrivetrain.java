@@ -6,6 +6,7 @@ import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.IMU;
 
+import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 
 public class MecanumDrivetrain {
@@ -14,16 +15,19 @@ public class MecanumDrivetrain {
     private final Motor frontLeft, frontRight, backLeft, backRight;
     private final IMU imu;
 
-    public MecanumDrivetrain(HardwareMap hardwareMap) {
-        frontLeft  = new Motor(hardwareMap, "frontLeft");
-        frontRight = new Motor(hardwareMap, "frontRight");
-        backLeft   = new Motor(hardwareMap, "backLeft");
-        backRight  = new Motor(hardwareMap, "backRight");
-        frontRight.setDistancePerPulse(0.608);
+    private final Telemetry logger;
 
-        // Reverse necessary motors if needed
-        frontLeft.setInverted(true);
-        backLeft.setInverted(true);
+    public MecanumDrivetrain(HardwareMap hardwareMap, Telemetry telemetry) {
+        frontLeft  = new Motor(hardwareMap, "frontleft");
+        frontRight = new Motor(hardwareMap, "frontright");
+        backLeft   = new Motor(hardwareMap, "backleft");
+        backRight  = new Motor(hardwareMap, "backright");
+        frontRight.setDistancePerPulse(0.608);
+        frontLeft.setDistancePerPulse(0.608);
+        backRight.setDistancePerPulse(0.608);
+        backLeft.setDistancePerPulse(0.608);
+        logger = telemetry;
+
 
         drive = new MecanumDrive(frontLeft, frontRight, backLeft, backRight);
         imu = hardwareMap.get(IMU.class, "imu");
@@ -38,6 +42,29 @@ public class MecanumDrivetrain {
         drive.driveRobotCentric(strafeSpeed, forwardSpeed, turnSpeed);
     }
 
+    public void drive_backward(double speed, double distance) throws InterruptedException {
+        frontRight.resetEncoder();
+        double distance_travelled = 0;
+        while (distance_travelled < distance)
+        {
+            double drive_speed = speed / distance * (distance - distance_travelled);
+            if (drive_speed < 0.15)
+            {
+                drive_speed = 0.15;
+            }
+            else if (drive_speed > speed)
+            {
+                drive_speed = speed;
+            }
+            drive.driveRobotCentric(0, drive_speed, 0);
+            Thread.sleep(100);
+            distance_travelled = frontRight.getDistance();
+            logger.addData("Distance: ", distance_travelled);
+            logger.update();
+        }
+        drive.stop();
+    }
+
     public void drive_forward(double speed, double distance) throws InterruptedException {
         frontRight.resetEncoder();
         double distance_travelled = 0;
@@ -48,9 +75,15 @@ public class MecanumDrivetrain {
             {
                 drive_speed = 0.15;
             }
-            drive.driveRobotCentric(0, drive_speed, 0);
+            else if (drive_speed > speed)
+            {
+                drive_speed = speed;
+            }
+            drive.driveRobotCentric(0, -drive_speed, 0);
             Thread.sleep(100);
-            distance_travelled = frontRight.getDistance();
+            distance_travelled = -frontRight.getDistance();
+            logger.addData("Distance: ", distance_travelled);
+            logger.update();
         }
         drive.stop();
     }
@@ -68,10 +101,10 @@ public class MecanumDrivetrain {
             if (Math.abs(turnSpeed) < 0.1) {
                 turnSpeed = turnSpeed / Math.abs(turnSpeed) * 0.1;
             }
-            drive.driveRobotCentric(0, 0, turnSpeed);
+            drive.driveRobotCentric(0, 0, -turnSpeed);
             Thread.sleep(100);
             currentAngle = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);
-            error = targetAngle - currentAngle;
+            error = targetAngle + currentAngle;
         }
         drive.stop();
     }

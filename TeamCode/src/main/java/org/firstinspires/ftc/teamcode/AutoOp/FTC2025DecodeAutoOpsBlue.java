@@ -19,7 +19,7 @@ import org.firstinspires.ftc.teamcode.Tools.TheShooterSystem;
 
 
 @Autonomous
-public class FTC2025DecodeAutoOpsRed extends LinearOpMode {
+public class FTC2025DecodeAutoOpsBlue extends LinearOpMode {
 
     private TheArtifactBasketSystem basketSystem;
     private TheIntakeSystem intakeSystem;
@@ -60,7 +60,7 @@ public class FTC2025DecodeAutoOpsRed extends LinearOpMode {
         intakeSystem = new TheIntakeSystem(intake_motor_left, intake_motor_right, intake_servo, basketSystem, colour_sensor);
         shooterSystem = new TheShooterSystem(basketSystem, shooter_left, shooter_right);
         cameraController = new CameraController(the_camera_servo, hardwareMap, telemetry);
-        drivetrain = new MecanumDrivetrain(hardwareMap);
+        drivetrain = new MecanumDrivetrain(hardwareMap, telemetry);
 
     }
 
@@ -75,7 +75,7 @@ public class FTC2025DecodeAutoOpsRed extends LinearOpMode {
         if (isStopRequested()) return;
 
         if (opModeIsActive()) {
-            drivetrain.drive_forward(0.5, 100);
+            drivetrain.turn_to(45, 0.5, 2);
         }
     }
 }
