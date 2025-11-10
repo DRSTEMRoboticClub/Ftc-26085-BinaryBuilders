@@ -1,8 +1,6 @@
 package org.firstinspires.ftc.teamcode.AutoOp;
 
-import com.arcrobotics.ftclib.command.SubsystemBase;
 import com.arcrobotics.ftclib.drivebase.MecanumDrive;
-import com.arcrobotics.ftclib.hardware.RevIMU;
 import com.arcrobotics.ftclib.hardware.motors.Motor;
 import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.robotcore.hardware.HardwareMap;
@@ -10,17 +8,18 @@ import com.qualcomm.robotcore.hardware.IMU;
 
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 
-public class MecanumDriveSubsystem {
+public class MecanumDrivetrain {
 
     private final MecanumDrive drive;
     private final Motor frontLeft, frontRight, backLeft, backRight;
     private final IMU imu;
 
-    public MecanumDriveSubsystem(HardwareMap hardwareMap) {
+    public MecanumDrivetrain(HardwareMap hardwareMap) {
         frontLeft  = new Motor(hardwareMap, "frontLeft");
         frontRight = new Motor(hardwareMap, "frontRight");
         backLeft   = new Motor(hardwareMap, "backLeft");
         backRight  = new Motor(hardwareMap, "backRight");
+        frontRight.setDistancePerPulse(0.608);
 
         // Reverse necessary motors if needed
         frontLeft.setInverted(true);
@@ -39,7 +38,24 @@ public class MecanumDriveSubsystem {
         drive.driveRobotCentric(strafeSpeed, forwardSpeed, turnSpeed);
     }
 
-    public void turn_to(double targetAngle, double speed, double threshold) {
+    public void drive_forward(double speed, double distance) throws InterruptedException {
+        frontRight.resetEncoder();
+        double distance_travelled = 0;
+        while (distance_travelled < distance)
+        {
+            double drive_speed = speed / distance * (distance - distance_travelled);
+            if (drive_speed < 0.15)
+            {
+                drive_speed = 0.15;
+            }
+            drive.driveRobotCentric(0, drive_speed, 0);
+            Thread.sleep(100);
+            distance_travelled = frontRight.getDistance();
+        }
+        drive.stop();
+    }
+
+    public void turn_to(double targetAngle, double speed, double threshold) throws InterruptedException {
         double currentAngle = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);
         double error = targetAngle - currentAngle;
         while (error > threshold) {
@@ -57,6 +73,7 @@ public class MecanumDriveSubsystem {
             currentAngle = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);
             error = targetAngle - currentAngle;
         }
+        drive.stop();
     }
 
     public void stop() {
