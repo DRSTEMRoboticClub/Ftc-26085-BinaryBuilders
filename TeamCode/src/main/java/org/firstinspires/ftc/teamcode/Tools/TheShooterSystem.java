@@ -8,7 +8,7 @@ public class TheShooterSystem {
     private final DcMotorEx shooterMotorLeft;
     private final DcMotorEx shooterMotorRight;
 
-    static private final int SHOOTING_TIME = 2000;
+    static private final int SHOOTING_TIME = 1000;
     static private final int MOTOR_SPEED = 1450;
 
     private ElapsedTime myTimer = new ElapsedTime();
@@ -78,6 +78,7 @@ public class TheShooterSystem {
     }
 
     public void Update() throws InterruptedException {
+        basketSystem.Update();
         switch (currentState) {
             case IDLE:
                 // Do nothing

@@ -76,6 +76,10 @@ public class TheArtifactBasketSystem {
         CloseShooter();
         CloseIntake();
         basketServo.setPwmRange(new PwmControl.PwmRange(500, 2500));
+        shutter1.setPosition(0.0);
+        shutter2.setPosition(0.0);
+        shutter3.setPosition(0.0);
+        shutter4.setPosition(0.0);
         turnServoTo(0.0);
     }
 

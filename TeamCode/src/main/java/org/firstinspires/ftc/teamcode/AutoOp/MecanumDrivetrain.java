@@ -47,17 +47,17 @@ public class MecanumDrivetrain {
         double distance_travelled = 0;
         while (distance_travelled < distance)
         {
-            double drive_speed = speed / distance * (distance - distance_travelled);
-            if (drive_speed < 0.15)
+            double drive_speed = 2 *  speed / distance * (distance - distance_travelled);
+            if (Math.abs(drive_speed) < 0.15)
             {
-                drive_speed = 0.15;
+                drive_speed = drive_speed / Math.abs(drive_speed) * 0.15;
             }
-            else if (drive_speed > speed)
+            else if (Math.abs(drive_speed) > speed)
             {
-                drive_speed = speed;
+                drive_speed = drive_speed / Math.abs(drive_speed) * speed;
             }
             drive.driveRobotCentric(0, drive_speed, 0);
-            Thread.sleep(100);
+            Thread.sleep(20);
             distance_travelled = frontRight.getDistance();
             logger.addData("Distance: ", distance_travelled);
             logger.update();
@@ -70,17 +70,17 @@ public class MecanumDrivetrain {
         double distance_travelled = 0;
         while (distance_travelled < distance)
         {
-            double drive_speed = speed / distance * (distance - distance_travelled);
-            if (drive_speed < 0.15)
+            double drive_speed = 2 * speed / distance * (distance - distance_travelled);
+            if (Math.abs(drive_speed) < 0.15)
             {
-                drive_speed = 0.15;
+                drive_speed = drive_speed / Math.abs(drive_speed) * 0.15;
             }
-            else if (drive_speed > speed)
+            else if (Math.abs(drive_speed) > speed)
             {
-                drive_speed = speed;
+                drive_speed = drive_speed / Math.abs(drive_speed) * speed;
             }
             drive.driveRobotCentric(0, -drive_speed, 0);
-            Thread.sleep(100);
+            Thread.sleep(20);
             distance_travelled = -frontRight.getDistance();
             logger.addData("Distance: ", distance_travelled);
             logger.update();
@@ -91,22 +91,54 @@ public class MecanumDrivetrain {
     public void turn_to(double targetAngle, double speed, double threshold) throws InterruptedException {
         double currentAngle = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);
         double error = targetAngle - currentAngle;
-        while (error > threshold) {
+        while (Math.abs(error) > threshold) {
             if (error > 180.0) {
                 error -= 360.0;
             } else if (error < -180.0) {
                 error += 360.0;
             }
             double turnSpeed = speed * Math.signum(error);
-            if (Math.abs(turnSpeed) < 0.1) {
-                turnSpeed = turnSpeed / Math.abs(turnSpeed) * 0.1;
+            if (Math.abs(turnSpeed) < 0.05) {
+                turnSpeed = turnSpeed / Math.abs(turnSpeed) * 0.05;
+            }
+            else if (Math.abs(turnSpeed) > speed) {
+                turnSpeed = turnSpeed / Math.abs(turnSpeed) * speed;
             }
             drive.driveRobotCentric(0, 0, -turnSpeed);
-            Thread.sleep(100);
+            Thread.sleep(20);
             currentAngle = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);
             error = targetAngle + currentAngle;
         }
         drive.stop();
+    }
+
+    public void left(double speed, double distance) throws InterruptedException {
+        frontRight.resetEncoder();
+        distance *= Math.sqrt(2);
+        distance = Math.abs(distance);
+        double distance_travelled = 0;
+        while (distance_travelled < distance)
+        {
+            double drive_speed = 2 * speed / distance * (distance - distance_travelled);
+            if (Math.abs(drive_speed) < 0.1)
+            {
+                drive_speed = drive_speed / Math.abs(drive_speed) * 0.1;
+            }
+            else if (Math.abs(drive_speed) > speed)
+            {
+                drive_speed = drive_speed / Math.abs(drive_speed) * speed;
+            }
+            drive.driveRobotCentric(-drive_speed, 0, 0);
+            Thread.sleep(20);
+            distance_travelled = Math.abs(frontRight.getDistance());
+            logger.addData("Distance: ", distance_travelled);
+            logger.update();
+        }
+        drive.stop();
+    }
+
+    public void right(double speed, double distance) throws InterruptedException {
+        left(-speed, distance);
     }
 
     public void stop() {
