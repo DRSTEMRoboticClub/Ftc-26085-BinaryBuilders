@@ -71,6 +71,7 @@ public class MecanumDrivetrain {
             distance_travelled = frontRight.getDistance();
             logger.addData("Distance: ", distance_travelled);
             logger.update();
+            intake.Update();
         }
         drive.stop();
     }
@@ -143,6 +144,7 @@ public class MecanumDrivetrain {
             distance_travelled = Math.abs(frontRight.getDistance());
             logger.addData("Distance: ", distance_travelled);
             logger.update();
+            intake.Update();
         }
         drive.stop();
     }
@@ -163,9 +165,9 @@ public class MecanumDrivetrain {
             double correction = camera.get_artifact_location();
             correction -= vision_ball_centre;
             correction /= 640;
-            correction *= 450;
-            right(speed, correction);
-            drive_backward(speed, 10);
+            correction *= 45;
+            left(speed, correction);
+            drive_backward(speed, 15);
             Thread.sleep(100);
             if (intake.getCurrentState() != TheIntakeSystem.IntakeState.INTAKING)
             {
