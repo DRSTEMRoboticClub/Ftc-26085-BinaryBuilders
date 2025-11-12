@@ -49,6 +49,7 @@ public class TheIntakeSystem {
     }
 
     public void Update() throws InterruptedException {
+        basketSystem.Update();
         switch (currentState) {
             case IDLE:
                 // Do nothing
@@ -56,12 +57,13 @@ public class TheIntakeSystem {
             case INTAKING:
                 if (colorSensor.getDistance(DistanceUnit.CM) <= 2.0)
                 {
-                    int red = colorSensor.red();
-                    int green = colorSensor.green();
-                    int blue = colorSensor.blue();
                     float[] hsv = new float[3];
-                    Color.RGBToHSV(red, green, blue, hsv);
-                    if (hsv[0] < 195.0)
+                    Color.RGBToHSV(colorSensor.red(), colorSensor.green(), colorSensor.blue(), hsv);
+                    while (hsv[0] < 100)
+                    {
+                        Color.RGBToHSV(colorSensor.red(), colorSensor.green(), colorSensor.blue(), hsv);
+                    }
+                    if (hsv[0] < 205)
                     {
                         if (!basketSystem.hasGreen)
                         {

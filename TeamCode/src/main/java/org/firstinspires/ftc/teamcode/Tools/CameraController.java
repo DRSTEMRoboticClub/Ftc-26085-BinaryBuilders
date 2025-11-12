@@ -151,7 +151,7 @@ public class CameraController {
             screenLogger.addData("Blobs Number1", blobs.size());
             ColorBlobLocatorProcessor.Util.filterByCriteria(
                     ColorBlobLocatorProcessor.BlobCriteria.BY_CIRCULARITY,
-                    0.5, 1, blobs);     /* filter out non-circular blobs.
+                    0.3, 1, blobs);     /* filter out non-circular blobs.
              * NOTE: You may want to adjust the minimum value depending on your use case.
              * Circularity values will be affected by shadows, and will therefore vary based
              * on the location of the camera on your robot and venue lighting. It is strongly

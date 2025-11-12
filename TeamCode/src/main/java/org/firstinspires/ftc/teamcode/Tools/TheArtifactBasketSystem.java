@@ -103,6 +103,13 @@ public class TheArtifactBasketSystem {
         }
     }
 
+    public void LoadBalls()
+    {
+        hasGreen = true;
+        hasPurple1 = true;
+        hasPurple2 = true;
+    }
+
     public void OpenShooter() {
         shutter1.setPosition(1.0);
         shutter2.setPosition(1.0);

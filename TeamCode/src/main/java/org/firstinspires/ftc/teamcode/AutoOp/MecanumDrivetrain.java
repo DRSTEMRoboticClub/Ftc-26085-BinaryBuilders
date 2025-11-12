@@ -23,7 +23,7 @@ public class MecanumDrivetrain {
 
     private final CameraController camera;
 
-    static private final int vision_ball_centre = 320;
+    static private final int vision_ball_centre = 270;
 
     public MecanumDrivetrain(HardwareMap hardwareMap, Telemetry telemetry, CameraController cam, TheIntakeSystem inta) {
         frontLeft  = new Motor(hardwareMap, "frontleft");
@@ -157,48 +157,75 @@ public class MecanumDrivetrain {
         drive.stop();
     }
 
-    public Boolean intake(double distance, double speed) throws InterruptedException {
-        camera.swithMode(CameraController.Mode.BLOB_MODE_DOWN);
-        double artifact_location = camera.get_artifact_location();
+    public void intake(double distance, double speed) throws InterruptedException {
+        double artifact_location = 0;
+        drive.driveRobotCentric(0, speed, 0);
         while (artifact_location == 0)
         {
-            drive.driveRobotCentric(0, speed, 0);
             artifact_location = camera.get_artifact_location();
+            logger.addData("Location", artifact_location);
+            logger.update();
+            Thread.sleep(20);
         }
         drive.stop();
-        while (Math.abs(artifact_location - vision_ball_centre) > 10)
+        drive_backward(speed, 30);
+
+        artifact_location = camera.get_artifact_location();
+        int timeout = 100;
+        while (Math.abs(artifact_location - vision_ball_centre) > 20 && timeout > 0)
         {
-            artifact_location = camera.get_artifact_location();
             double error = artifact_location - vision_ball_centre;
-            error /= 320;
-            error *= speed;
-            if (Math.abs(error) < 0.05)
+            if (artifact_location == 0)
             {
-                error = error / Math.abs(error) * 0.05;
+                error = 0;
+                drive.driveRobotCentric(0, 0.1, 0);
             }
-            else if (Math.abs(error) > speed)
+            else
             {
-                error = error / Math.abs(error) * speed;
+                error /= 320;
+                error *= speed;
+                if (Math.abs(error) < 0.2)
+                {
+                    error = error / Math.abs(error) * 0.2;
+                }
+                else if (Math.abs(error) > speed)
+                {
+                    error = error / Math.abs(error) * speed;
+                }
+                drive.driveRobotCentric(error, 0, 0);
             }
-            drive.driveRobotCentric(-error, 0, 0);
+
             Thread.sleep(20);
+            artifact_location = camera.get_artifact_location();
+            timeout--;
+        }
+
+        if (timeout <= 0)
+        {
+            return;
         }
         intake.intake();
 
-        for (int i = 0; i < distance; i += 10)
+        for (int i = 0; i < distance; i += 25)
         {
-            drive_backward(speed, 10);
+            drive_backward(0.3, 25);
             if (intake.getCurrentState() != TheIntakeSystem.IntakeState.INTAKING)
             {
-                return true;
+                drive_forward(0.8, 60);
+                timeout = 500;
+                while (intake.getCurrentState() != TheIntakeSystem.IntakeState.IDLE && timeout > 0) {
+                    intake.Update();
+                    Thread.sleep(20);
+                    timeout--;
+                }
+                break;
             }
             for (int j = 0; j < 5; j++)
             {
                 intake.Update();
-                Thread.sleep(20);
+                Thread.sleep(30);
             }
         }
         intake.stopIntake();
-        return false;
     }
 }

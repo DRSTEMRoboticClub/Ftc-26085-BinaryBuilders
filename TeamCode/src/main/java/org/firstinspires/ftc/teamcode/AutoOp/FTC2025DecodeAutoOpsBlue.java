@@ -60,7 +60,7 @@ public class FTC2025DecodeAutoOpsBlue extends LinearOpMode {
         shooterSystem = new TheShooterSystem(basketSystem, shooter_left, shooter_right);
         cameraController = new CameraController(the_camera_servo, hardwareMap, telemetry);
         drivetrain = new MecanumDrivetrain(hardwareMap, telemetry, cameraController, intakeSystem);
-
+        basketSystem.LoadBalls();
     }
 
     private void shootSequence() throws InterruptedException
@@ -68,28 +68,37 @@ public class FTC2025DecodeAutoOpsBlue extends LinearOpMode {
         switch (sequenceId)
         {
             case 21:
-                shooterSystem.shootGreen();
+                if (basketSystem.hasGreen)
+                {
+                    shooterSystem.shootGreen();
+                    while (shooterSystem.getCurrentState() != TheShooterSystem.ShooterState.IDLE) {shooterSystem.Update();}
+                }
+                shooterSystem.shootPurple();
                 while (shooterSystem.getCurrentState() != TheShooterSystem.ShooterState.IDLE) {shooterSystem.Update();}
-                shooterSystem.shootPurple1();
-                while (shooterSystem.getCurrentState() != TheShooterSystem.ShooterState.IDLE) {shooterSystem.Update();}
-                shooterSystem.shootPurple2();
+                shooterSystem.shootPurple();
                 while (shooterSystem.getCurrentState() != TheShooterSystem.ShooterState.IDLE) {shooterSystem.Update();}
                 break;
             case 22:
-                shooterSystem.shootPurple1();
+                shooterSystem.shootPurple();
                 while (shooterSystem.getCurrentState() != TheShooterSystem.ShooterState.IDLE) {shooterSystem.Update();}
-                shooterSystem.shootGreen();
-                while (shooterSystem.getCurrentState() != TheShooterSystem.ShooterState.IDLE) {shooterSystem.Update();}
-                shooterSystem.shootPurple2();
+                if (basketSystem.hasGreen)
+                {
+                    shooterSystem.shootGreen();
+                    while (shooterSystem.getCurrentState() != TheShooterSystem.ShooterState.IDLE) {shooterSystem.Update();}
+                }
+                shooterSystem.shootPurple();
                 while (shooterSystem.getCurrentState() != TheShooterSystem.ShooterState.IDLE) {shooterSystem.Update();}
                 break;
             case 23:
-                shooterSystem.shootPurple1();
+                shooterSystem.shootPurple();
                 while (shooterSystem.getCurrentState() != TheShooterSystem.ShooterState.IDLE) {shooterSystem.Update();}
-                shooterSystem.shootPurple2();
+                shooterSystem.shootPurple();
                 while (shooterSystem.getCurrentState() != TheShooterSystem.ShooterState.IDLE) {shooterSystem.Update();}
-                shooterSystem.shootGreen();
-                while (shooterSystem.getCurrentState() != TheShooterSystem.ShooterState.IDLE) {shooterSystem.Update();}
+                if (basketSystem.hasGreen)
+                {
+                    shooterSystem.shootGreen();
+                    while (shooterSystem.getCurrentState() != TheShooterSystem.ShooterState.IDLE) {shooterSystem.Update();}
+                }
                 break;
             default:
                 break;
@@ -107,10 +116,12 @@ public class FTC2025DecodeAutoOpsBlue extends LinearOpMode {
         if (isStopRequested()) return;
 
         if (opModeIsActive()) {
-            /*
+
             sequenceId = cameraController.get_mission_tag();
             telemetry.addData("Mission Tag: ", sequenceId);
             telemetry.update();
+
+            // Shoot reloaded 3 balls
             drivetrain.drive_forward(0.8, 2200);
             if (sequenceId == 0)
             {
@@ -118,47 +129,26 @@ public class FTC2025DecodeAutoOpsBlue extends LinearOpMode {
             }
             telemetry.addData("Mission Tag: ", sequenceId);
             telemetry.update();
-            drivetrain.turn_to(-45, 0.3, 2);
+            drivetrain.turn_to(-45, 0.5, 2);
             drivetrain.drive_backward(0.5, 300);
             drivetrain.turn_to(-45, 0.2, 2);
+            cameraController.swithMode(CameraController.Mode.BLOB_MODE_DOWN);
             shootSequence();
+
+            // Try to intake
             drivetrain.turn_to(90, 0.5, 2);
             drivetrain.turn_to(90, 0.2, 2);
-            drivetrain.drive_backward(0.5, 400);
-            drivetrain.intake(150, 0.8);
-            drivetrain.intake(150, 0.8);
-            drivetrain.intake(150, 0.8);
-            drivetrain.drive_backward(0.8, 950);
-            drivetrain.turn_to(-45, 0.5, 2);
-            drivetrain.turn_to(-45, 0.2, 2);
-            shootSequence();
-            drivetrain.turn_to(90, 0.5, 2);
-            drivetrain.turn_to(90, 0.2, 2);
-            drivetrain.right(0.6, 600);
-            drivetrain.intake(150, 0.8);
-            drivetrain.intake(150, 0.8);
-            drivetrain.intake(150, 0.8);
-            drivetrain.drive_backward(0.8, 950);
-            drivetrain.left(0.6, 600);
-            drivetrain.turn_to(-45, 0.5, 2);
-            drivetrain.turn_to(-45, 0.2, 2);
-            shootSequence();
-            drivetrain.turn_to(90, 0.5, 2);
-            drivetrain.turn_to(90, 0.2, 2);
-            drivetrain.right(0.6, 1200);
-            drivetrain.intake(150, 0.8);
-            drivetrain.intake(150, 0.8);
-            drivetrain.intake(150, 0.8);
-            drivetrain.drive_backward(0.8, 950);
-            drivetrain.left(0.6, 1200);
-            drivetrain.turn_to(-45, 0.5, 2);
-            drivetrain.turn_to(-45, 0.2, 2);
-            shootSequence();
-            drivetrain.turn_to(90, 0.5, 2);
-            drivetrain.turn_to(90, 0.2, 2);
-            drivetrain.right(0.6, 600);
-            */
+            drivetrain.drive_backward(0.5, 300);
             drivetrain.intake(150, 0.3);
+
+            // Try the intaked ball
+            drivetrain.drive_forward(0.8, 100);
+            drivetrain.turn_to(90, 0.3, 2);
+            drivetrain.drive_forward(0.8, 400);
+            drivetrain.turn_to(-45, 0.5, 2);
+            drivetrain.turn_to(-45, 0.2, 2);
+            shootSequence();
+            drivetrain.drive_backward(1.0, 1000);
         }
     }
 }
