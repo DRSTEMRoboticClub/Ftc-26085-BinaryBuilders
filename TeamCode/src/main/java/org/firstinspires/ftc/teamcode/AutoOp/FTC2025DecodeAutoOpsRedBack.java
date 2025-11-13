@@ -121,7 +121,7 @@ public class FTC2025DecodeAutoOpsRedBack extends LinearOpMode {
             telemetry.update();
 
             // Shoot reloaded 3 balls
-            drivetrain.drive_forward(0.8, 2200);
+            drivetrain.drive_forward(0.8, -0.25, 2200);
             if (sequenceId == 0)
             {
                 sequenceId = cameraController.get_mission_tag();
@@ -129,7 +129,7 @@ public class FTC2025DecodeAutoOpsRedBack extends LinearOpMode {
             telemetry.addData("Mission Tag: ", sequenceId);
             telemetry.update();
             drivetrain.turn_to(45, 0.5, 2);
-            drivetrain.drive_backward(0.5, 300);
+            //drivetrain.drive_backward(0.5, 300);
             drivetrain.turn_to(45, 0.2, 2);
             shootSequence();
             drivetrain.right(1.0, 500);

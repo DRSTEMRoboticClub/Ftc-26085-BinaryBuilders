@@ -8,7 +8,7 @@ public class TheShooterSystem {
     private final DcMotorEx shooterMotorLeft;
     private final DcMotorEx shooterMotorRight;
 
-    static private final int SHOOTING_TIME = 500;
+    static private final int SHOOTING_TIME = 750;
     static private final int MOTOR_SPEED = 1450;
 
     private ElapsedTime myTimer = new ElapsedTime();
