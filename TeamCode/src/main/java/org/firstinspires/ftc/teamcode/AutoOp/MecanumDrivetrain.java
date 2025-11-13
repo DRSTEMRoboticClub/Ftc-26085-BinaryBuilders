@@ -139,7 +139,7 @@ public class MecanumDrivetrain {
             {
                 drive_speed = drive_speed / Math.abs(drive_speed) * speed;
             }
-            drive.driveRobotCentric(-drive_speed, 0, 0);
+            drive.driveRobotCentric(drive_speed, 0, 0);
             Thread.sleep(20);
             distance_travelled = Math.abs(frontRight.getDistance());
             logger.addData("Distance: ", distance_travelled);
@@ -150,7 +150,29 @@ public class MecanumDrivetrain {
     }
 
     public void right(double speed, double distance) throws InterruptedException {
-        left(-speed, distance);
+        frontRight.resetEncoder();
+        distance *= Math.sqrt(2);
+        distance = Math.abs(distance);
+        double distance_travelled = 0;
+        while (distance_travelled < distance)
+        {
+            double drive_speed = 2 * speed / distance * (distance - distance_travelled);
+            if (Math.abs(drive_speed) < 0.1)
+            {
+                drive_speed = drive_speed / Math.abs(drive_speed) * 0.1;
+            }
+            else if (Math.abs(drive_speed) > speed)
+            {
+                drive_speed = drive_speed / Math.abs(drive_speed) * speed;
+            }
+            drive.driveRobotCentric(-drive_speed, 0, 0);
+            Thread.sleep(20);
+            distance_travelled = Math.abs(frontRight.getDistance());
+            logger.addData("Distance: ", distance_travelled);
+            logger.update();
+            intake.Update();
+        }
+        drive.stop();
     }
 
     public void stop() {

@@ -19,7 +19,7 @@ import org.firstinspires.ftc.teamcode.Tools.TheShooterSystem;
 
 
 @Autonomous
-public class FTC2025DecodeAutoOpsBlue extends LinearOpMode {
+public class FTC2025DecodeAutoOpsBlueBack extends LinearOpMode {
 
     private TheArtifactBasketSystem basketSystem;
     private TheIntakeSystem intakeSystem;
@@ -134,21 +134,8 @@ public class FTC2025DecodeAutoOpsBlue extends LinearOpMode {
             drivetrain.turn_to(-45, 0.2, 2);
             cameraController.swithMode(CameraController.Mode.BLOB_MODE_DOWN);
             shootSequence();
-
-            // Try to intake
-            drivetrain.turn_to(90, 0.5, 2);
-            drivetrain.turn_to(90, 0.2, 2);
-            drivetrain.drive_backward(0.5, 300);
-            drivetrain.intake(150, 0.3);
-
-            // Try the intaked ball
-            drivetrain.drive_forward(0.8, 100);
-            drivetrain.turn_to(90, 0.3, 2);
-            drivetrain.drive_forward(0.8, 400);
-            drivetrain.turn_to(-45, 0.5, 2);
-            drivetrain.turn_to(-45, 0.2, 2);
-            shootSequence();
-            drivetrain.drive_backward(1.0, 1000);
+            drivetrain.left(1.0, 500);
         }
     }
+
 }
