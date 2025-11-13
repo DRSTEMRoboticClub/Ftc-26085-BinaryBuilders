@@ -99,6 +99,30 @@ public class MecanumDrivetrain {
         drive.stop();
     }
 
+    public void drive_forward(double forward_speed, double strait_speed, double distance) throws InterruptedException {
+        frontRight.resetEncoder();
+        double ratio = strait_speed / forward_speed;
+        double distance_travelled = 0;
+        while (distance_travelled < distance)
+        {
+            double drive_speed = 2 * forward_speed / distance * (distance - distance_travelled);
+            if (Math.abs(drive_speed) < 0.15)
+            {
+                drive_speed = drive_speed / Math.abs(drive_speed) * 0.15;
+            }
+            else if (Math.abs(drive_speed) > forward_speed)
+            {
+                drive_speed = drive_speed / Math.abs(drive_speed) * forward_speed;
+            }
+            drive.driveRobotCentric(-drive_speed*ratio, -drive_speed, 0);
+            Thread.sleep(20);
+            distance_travelled = -frontRight.getDistance();
+            logger.addData("Distance: ", distance_travelled);
+            logger.update();
+        }
+        drive.stop();
+    }
+
     public void turn_to(double targetAngle, double speed, double threshold) throws InterruptedException {
         double currentAngle = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);
         double error = targetAngle - currentAngle;

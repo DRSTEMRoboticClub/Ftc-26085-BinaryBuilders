@@ -127,7 +127,6 @@ public class FTC2025DecodeAutoOpsBlueFront extends LinearOpMode {
             telemetry.update();
             drivetrain.turn_to(5, 0.4, 2);
             drivetrain.turn_to(5, 0.2, 2);
-            cameraController.swithMode(CameraController.Mode.BLOB_MODE_DOWN);
             shootSequence();
             drivetrain.left(1.0, 500);
         }

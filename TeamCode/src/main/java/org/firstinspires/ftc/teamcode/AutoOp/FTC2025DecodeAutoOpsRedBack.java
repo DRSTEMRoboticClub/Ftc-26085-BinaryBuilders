@@ -131,7 +131,6 @@ public class FTC2025DecodeAutoOpsRedBack extends LinearOpMode {
             drivetrain.turn_to(45, 0.5, 2);
             drivetrain.drive_backward(0.5, 300);
             drivetrain.turn_to(45, 0.2, 2);
-            cameraController.swithMode(CameraController.Mode.BLOB_MODE_DOWN);
             shootSequence();
             drivetrain.right(1.0, 500);
         }
