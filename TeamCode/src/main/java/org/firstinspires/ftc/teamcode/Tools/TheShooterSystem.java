@@ -8,7 +8,7 @@ public class TheShooterSystem {
     private final DcMotorEx shooterMotorLeft;
     private final DcMotorEx shooterMotorRight;
 
-    static private final int SHOOTING_TIME = 1000;
+    static private final int SHOOTING_TIME = 500;
     static private final int MOTOR_SPEED = 1450;
 
     private ElapsedTime myTimer = new ElapsedTime();
@@ -23,7 +23,6 @@ public class TheShooterSystem {
     public enum ShooterState {
         IDLE,
         RELEASING,
-        SPEEDUP,
         SHOOTING
     }
 
@@ -86,12 +85,6 @@ public class TheShooterSystem {
             case RELEASING:
                 if (basketSystem.getCurrentState() == TheArtifactBasketSystem.BasketState.FREE)
                 {
-                    currentState = ShooterState.SPEEDUP;
-                    myTimer.reset();
-                }
-                break;
-            case SPEEDUP:
-                if (myTimer.milliseconds() >= 500) {
                     currentState = ShooterState.SHOOTING;
                     myTimer.reset();
                 }
