@@ -217,7 +217,7 @@ public class MecanumDrivetrain {
         drive_backward(speed, 30);
 
         artifact_location = camera.get_artifact_location();
-        int timeout = 100;
+        int timeout = 150;
         while (Math.abs(artifact_location - vision_ball_centre) > 20 && timeout > 0)
         {
             double error = artifact_location - vision_ball_centre;
@@ -250,28 +250,26 @@ public class MecanumDrivetrain {
         {
             return;
         }
+        drive_backward(0.3, distance);
         intake.intake();
+        timeout = 50;
+        while (intake.getCurrentState() == TheIntakeSystem.IntakeState.INTAKING && timeout > 0) {
+            intake.Update();
+            Thread.sleep(20);
+            timeout--;
+        }
 
-        for (int i = 0; i < distance; i += 25)
+        if (intake.getCurrentState() != TheIntakeSystem.IntakeState.INTAKING)
         {
-            drive_backward(0.3, 25);
-            if (intake.getCurrentState() != TheIntakeSystem.IntakeState.INTAKING)
-            {
-                drive_forward(0.8, 60);
-                timeout = 500;
-                while (intake.getCurrentState() != TheIntakeSystem.IntakeState.IDLE && timeout > 0) {
-                    intake.Update();
-                    Thread.sleep(20);
-                    timeout--;
-                }
-                break;
-            }
-            for (int j = 0; j < 5; j++)
-            {
+            timeout = 250;
+            while (intake.getCurrentState() != TheIntakeSystem.IntakeState.IDLE && timeout > 0) {
                 intake.Update();
-                Thread.sleep(30);
+                Thread.sleep(20);
+                timeout--;
             }
         }
+
         intake.stopIntake();
+        Thread.sleep(100);
     }
 }
