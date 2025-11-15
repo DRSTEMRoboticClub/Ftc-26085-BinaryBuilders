@@ -138,7 +138,7 @@ public class TheIntakeSystem {
                 }
                 break;
             case SPITTING:
-                if (colorSensor.getDistance(DistanceUnit.CM) >= 2.5)
+                if (colorSensor.getDistance(DistanceUnit.CM) >= 5.0)
                 {
                     intakeMotorLeft.set(0.0);
                     intakeMotorRight.set(0.0);
@@ -175,5 +175,12 @@ public class TheIntakeSystem {
         {
             stopIntake();
         }
+    }
+
+    public void spit() throws InterruptedException
+    {
+        intakeMotorLeft.set(-1.0);
+        intakeMotorRight.set(-1.0);
+        currentState = IntakeState.SPITTING;
     }
 }

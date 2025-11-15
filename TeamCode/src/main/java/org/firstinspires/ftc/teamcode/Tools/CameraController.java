@@ -102,31 +102,22 @@ public class CameraController {
                 .setCamera(hardwareMap.get(WebcamName.class, "Webcam 1"))
                 .build();
 
-        swithMode(Mode.TAG_MODE);
+        switchMode(Mode.TAG_MODE);
     }
 
     public void Down() {
         cameraServo.setPosition(0.05);
     }
 
-    public void Up() {
-        cameraServo.setPosition(0.2);
-    }
-
     public void Front() {
         cameraServo.setPosition(0.95);
     }
 
-    public void swithMode(Mode mode) {
+    public void switchMode(Mode mode) {
         switch(mode) {
             case TAG_MODE:
                 Front();
                 cameraMode = Mode.TAG_MODE;
-                //visionPortal.stopStreaming();
-                break;
-            case BLOB_MODE_UP:
-                Up();
-                cameraMode = Mode.BLOB_MODE_UP;
                 //visionPortal.stopStreaming();
                 break;
             case BLOB_MODE_DOWN:

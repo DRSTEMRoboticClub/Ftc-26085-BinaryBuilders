@@ -261,7 +261,7 @@ public class MecanumDrivetrain {
 
         if (intake.getCurrentState() != TheIntakeSystem.IntakeState.INTAKING)
         {
-            timeout = 250;
+            timeout = 150;
             while (intake.getCurrentState() != TheIntakeSystem.IntakeState.IDLE && timeout > 0) {
                 intake.Update();
                 Thread.sleep(20);

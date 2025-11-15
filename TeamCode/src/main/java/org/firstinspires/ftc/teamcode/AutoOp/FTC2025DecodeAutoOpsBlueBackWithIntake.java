@@ -54,7 +54,7 @@ public class FTC2025DecodeAutoOpsBlueBackWithIntake extends LinearOpMode {
         intake_motor_right.setInverted(true);
         Servo intake_servo = hardwareMap.get(Servo.class, "intake");
         colour_sensor = (ColorRangeSensor) hardwareMap.colorSensor.get("colourblind");
-        basketSystem = new TheArtifactBasketSystem(the_basket_servo, the_shutter1, the_shutter2, the_shutter3, the_shutter4);
+        basketSystem = new TheArtifactBasketSystem(the_basket_servo, the_shutter1, the_shutter2, the_shutter3, the_shutter4, shooter_left, shooter_right);
         intakeSystem = new TheIntakeSystem(intake_motor_left, intake_motor_right, intake_servo, basketSystem, colour_sensor);
         shooterSystem = new TheShooterSystem(basketSystem, shooter_left, shooter_right);
         cameraController = new CameraController(the_camera_servo, hardwareMap, telemetry);
@@ -133,12 +133,12 @@ public class FTC2025DecodeAutoOpsBlueBackWithIntake extends LinearOpMode {
             drivetrain.turn_to(-45, 0.8, 2);
             //drivetrain.drive_backward(0.5, 300);
             drivetrain.turn_to(-45, 0.2, 2);
-            cameraController.swithMode(CameraController.Mode.BLOB_MODE_DOWN);
+            cameraController.switchMode(CameraController.Mode.BLOB_MODE_DOWN);
             shootSequence();
             drivetrain.turn_to(90, 0.8, 2);
             drivetrain.turn_to(90, 0.2, 2);
-            drivetrain.intake(50, 0.3);
-            drivetrain.intake(80, 0.2);
+            drivetrain.intake(75, 0.3);
+            drivetrain.intake(100, 0.2);
             //drivetrain.intake(150, 0.2);
             drivetrain.drive_forward(1.0, -0.2, 500);
             drivetrain.turn_to(-45, 0.8, 2);

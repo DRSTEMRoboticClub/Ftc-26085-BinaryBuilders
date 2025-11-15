@@ -54,7 +54,7 @@ public class FTC2025DecodeAutoOpsBlueFront extends LinearOpMode {
         intake_motor_right.setInverted(true);
         Servo intake_servo = hardwareMap.get(Servo.class, "intake");
         colour_sensor = (ColorRangeSensor) hardwareMap.colorSensor.get("colourblind");
-        basketSystem = new TheArtifactBasketSystem(the_basket_servo, the_shutter1, the_shutter2, the_shutter3, the_shutter4);
+        basketSystem = new TheArtifactBasketSystem(the_basket_servo, the_shutter1, the_shutter2, the_shutter3, the_shutter4, shooter_left, shooter_right);
         intakeSystem = new TheIntakeSystem(intake_motor_left, intake_motor_right, intake_servo, basketSystem, colour_sensor);
         shooterSystem = new TheShooterSystem(basketSystem, shooter_left, shooter_right);
         cameraController = new CameraController(the_camera_servo, hardwareMap, telemetry);

@@ -14,6 +14,8 @@ import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.ServoImplEx;
+import com.qualcomm.robotcore.util.ElapsedTime;
+
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
@@ -46,6 +48,8 @@ public class FTC2025DecodeTeleOps extends LinearOpMode {
 
     private ColorRangeSensor colour_sensor;
 
+    private ElapsedTime runtime = new ElapsedTime();
+
     private IMU imu;
 
     // Initialise robot hardware
@@ -68,7 +72,7 @@ public class FTC2025DecodeTeleOps extends LinearOpMode {
         intake_motor_right.setInverted(true);
         Servo intake_servo = hardwareMap.get(Servo.class, "intake");
         colour_sensor = (ColorRangeSensor) hardwareMap.colorSensor.get("colourblind");
-        basketSystem = new TheArtifactBasketSystem(the_basket_servo, the_shutter1, the_shutter2, the_shutter3, the_shutter4);
+        basketSystem = new TheArtifactBasketSystem(the_basket_servo, the_shutter1, the_shutter2, the_shutter3, the_shutter4, shooter_left, shooter_right);
         intakeSystem = new TheIntakeSystem(intake_motor_left, intake_motor_right, intake_servo, basketSystem, colour_sensor);
         shooterSystem = new TheShooterSystem(basketSystem, shooter_left, shooter_right);
         cameraController = new CameraController(the_camera_servo, hardwareMap, telemetry);
@@ -96,12 +100,15 @@ public class FTC2025DecodeTeleOps extends LinearOpMode {
 
         if (isStopRequested()) return;
 
+        runtime.reset();
+
         while (opModeIsActive()) {
+            if (runtime.milliseconds() > 119000) {
+                drive.stop();
+                break;
+            }
 
-            YawPitchRollAngles orientation = imu.getRobotYawPitchRollAngles();
-            double yaw = orientation.getYaw(AngleUnit.DEGREES);
             double speed = gamepad1.right_bumper || gamepad2.right_bumper ? 0.15 : 0.8;
-
             if (driveGamepad1.getLeftX() != 0.0
                     || driveGamepad1.getLeftY() != 0.0
                     || driveGamepad1.getRightX() != 0.0) {
@@ -118,35 +125,43 @@ public class FTC2025DecodeTeleOps extends LinearOpMode {
             {
                 basketSystem.OpenIntake();
                 basketSystem.OpenShooter();
+                intakeSystem.spit();
             }
 
-            if (gamepad1.a) {
-                shooterSystem.shootGreen();
+            if (gamepad1.left_trigger < 0.25) {
+                if (gamepad1.a) {
+                    shooterSystem.shootGreen();
+                }
+
+                if (gamepad1.b) {
+                    shooterSystem.shootPurple1();
+                }
+
+                if (gamepad1.y) {
+                    shooterSystem.shootPurple2();
+                }
+            }
+            else
+            {
+                if (gamepad1.a) {
+                    shooterSystem.shootGreenLong();
+                }
+
+                if (gamepad1.b) {
+                    shooterSystem.shootPurple1Long();
+                }
+
+                if (gamepad1.y) {
+                    shooterSystem.shootPurple2Long();
+                }
             }
 
-            if (gamepad1.b) {
-                shooterSystem.shootPurple1();
-            }
-
-            if (gamepad1.y) {
-                shooterSystem.shootPurple2();
-            }
 
             if (gamepad2.x) {
                 intakeSystem.toggle_intake();
                 Thread.sleep(100);
             }
 
-            if (gamepad1.left_bumper) {
-                //rotate basket left
-            }
-            if (gamepad1.right_bumper) {
-                //rotate basket right
-            }
-
-            if (gamepad1.dpad_up) {
-                cameraController.Up();
-            }
 
             if (gamepad1.dpad_down) {
                 cameraController.Down();
@@ -155,17 +170,6 @@ public class FTC2025DecodeTeleOps extends LinearOpMode {
             if (gamepad1.dpad_right) {
                 cameraController.Front();
             }
-
-            telemetry.addData("Distance: ", colour_sensor.getDistance(DistanceUnit.CM));
-            int red = colour_sensor.red();
-            int green = colour_sensor.green();
-            int blue = colour_sensor.blue();
-
-            float[] hsv = new float[3];
-            Color.RGBToHSV(red, green, blue, hsv);
-
-            cameraController.get_artifact_location();
-
 
             telemetry.update();
             basketSystem.Update();

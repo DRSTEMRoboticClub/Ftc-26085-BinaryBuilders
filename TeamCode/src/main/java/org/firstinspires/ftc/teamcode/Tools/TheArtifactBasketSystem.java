@@ -1,4 +1,5 @@
 package org.firstinspires.ftc.teamcode.Tools;
+import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.PwmControl;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.ServoImplEx;
@@ -11,6 +12,8 @@ public class TheArtifactBasketSystem {
     private final Servo shutter3;
     private final Servo shutter4;
     private double servoPosition = 0.0;
+    private final DcMotorEx shooter1;
+    private final DcMotorEx shooter2;
 
     public boolean hasGreen = false;
     public boolean hasPurple1 = false;
@@ -19,7 +22,7 @@ public class TheArtifactBasketSystem {
     public boolean isShooterShutterOpen = true;
 
     static public final int WAIT_SHUTTER_MILLISECONDS = 750;
-    static public final int WAIT_BASKET_MILLISECONDS = 750;
+    static public final int WAIT_BASKET_MILLISECONDS = 850;
 
     static private final double GREEN_RECEIVE_POSITION = 60.0 / 300.0;
     static private final double PURPLE2_RECEIVE_POSITION = 180.0 / 300.0;
@@ -67,7 +70,7 @@ public class TheArtifactBasketSystem {
         servoPosition = position;
     }
 
-    public TheArtifactBasketSystem(ServoImplEx the_basket_servo, Servo the_shutter1, Servo the_shutter2, Servo the_shutter3, Servo the_shutter4) throws InterruptedException {
+    public TheArtifactBasketSystem(ServoImplEx the_basket_servo, Servo the_shutter1, Servo the_shutter2, Servo the_shutter3, Servo the_shutter4, DcMotorEx leftshooter, DcMotorEx rightshooter) throws InterruptedException {
         basketServo = the_basket_servo;
         shutter1 = the_shutter1;
         shutter2 = the_shutter2;
@@ -81,6 +84,8 @@ public class TheArtifactBasketSystem {
         shutter3.setPosition(0.0);
         shutter4.setPosition(0.0);
         turnServoTo(0.0);
+        shooter1 = leftshooter;
+        shooter2 = rightshooter;
     }
 
     public void OpenIntake() throws InterruptedException {
@@ -287,7 +292,7 @@ public class TheArtifactBasketSystem {
                     }
                     break;
                 case RELEASING_GREEN:
-                    if (myTimer.milliseconds() > WAIT_BASKET_MILLISECONDS) {
+                    if (myTimer.milliseconds() > WAIT_BASKET_MILLISECONDS && shooter1.getVelocity() > 1400 && shooter2.getVelocity() > 1400) {
                         myTimer.reset();
                         OpenShooter();
                         currentState = BasketState.POST_RELEASING_GREEN;
@@ -307,7 +312,7 @@ public class TheArtifactBasketSystem {
                     }
                     break;
                 case RELEASING_PURPLE2:
-                    if (myTimer.milliseconds() > WAIT_BASKET_MILLISECONDS) {
+                    if (myTimer.milliseconds() > WAIT_BASKET_MILLISECONDS && shooter1.getVelocity() > 1400 && shooter2.getVelocity() > 1400) {
                         myTimer.reset();
                         OpenShooter();
                         currentState = BasketState.POST_RELEASING_PURPLE2;
@@ -327,7 +332,7 @@ public class TheArtifactBasketSystem {
                     }
                     break;
                 case RELEASING_PURPLE1:
-                    if (myTimer.milliseconds() > WAIT_BASKET_MILLISECONDS) {
+                    if (myTimer.milliseconds() > WAIT_BASKET_MILLISECONDS && shooter1.getVelocity() > 1400 && shooter2.getVelocity() > 1400) {
                         myTimer.reset();
                         OpenShooter();
                         currentState = BasketState.POST_RELEASING_PURPLE1;

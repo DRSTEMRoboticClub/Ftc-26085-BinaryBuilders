@@ -54,7 +54,7 @@ public class FTC2025DecodeAutoOpsRedBack extends LinearOpMode {
         intake_motor_right.setInverted(true);
         Servo intake_servo = hardwareMap.get(Servo.class, "intake");
         colour_sensor = (ColorRangeSensor) hardwareMap.colorSensor.get("colourblind");
-        basketSystem = new TheArtifactBasketSystem(the_basket_servo, the_shutter1, the_shutter2, the_shutter3, the_shutter4);
+        basketSystem = new TheArtifactBasketSystem(the_basket_servo, the_shutter1, the_shutter2, the_shutter3, the_shutter4, shooter_left, shooter_right);
         intakeSystem = new TheIntakeSystem(intake_motor_left, intake_motor_right, intake_servo, basketSystem, colour_sensor);
         shooterSystem = new TheShooterSystem(basketSystem, shooter_left, shooter_right);
         cameraController = new CameraController(the_camera_servo, hardwareMap, telemetry);
@@ -121,7 +121,7 @@ public class FTC2025DecodeAutoOpsRedBack extends LinearOpMode {
             telemetry.update();
 
             // Shoot reloaded 3 balls
-            drivetrain.drive_forward(0.8, -0.25, 2200);
+            drivetrain.drive_forward(0.8, -0.3, 1500);
             if (sequenceId == 0)
             {
                 sequenceId = cameraController.get_mission_tag();

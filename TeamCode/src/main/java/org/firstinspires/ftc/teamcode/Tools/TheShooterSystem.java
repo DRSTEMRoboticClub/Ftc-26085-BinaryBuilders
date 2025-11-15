@@ -8,8 +8,9 @@ public class TheShooterSystem {
     private final DcMotorEx shooterMotorLeft;
     private final DcMotorEx shooterMotorRight;
 
-    static private final int SHOOTING_TIME = 750;
+    static private final int SHOOTING_TIME = 500;
     static private final int MOTOR_SPEED = 1450;
+    static private final int MOTOR_SPEED_LONG_RANGE = 2750;
 
     private ElapsedTime myTimer = new ElapsedTime();
 
@@ -33,11 +34,19 @@ public class TheShooterSystem {
 
     }
 
-    public void StartShooterMotors()
+    public void StartShooterMotorsLow()
     {
         shooterMotorLeft.setVelocity(MOTOR_SPEED);
         shooterMotorLeft.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
         shooterMotorRight.setVelocity(MOTOR_SPEED);
+        shooterMotorRight.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+    }
+
+    public void StartShooterMotorsHigh()
+    {
+        shooterMotorLeft.setVelocity(MOTOR_SPEED_LONG_RANGE);
+        shooterMotorLeft.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        shooterMotorRight.setVelocity(MOTOR_SPEED_LONG_RANGE);
         shooterMotorRight.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
     }
 
@@ -48,7 +57,13 @@ public class TheShooterSystem {
     }
 
     public void shootGreen() throws InterruptedException {
-        StartShooterMotors();
+        StartShooterMotorsLow();
+        basketSystem.ReleaseGreen();
+        currentState = ShooterState.RELEASING;
+    }
+
+    public void shootGreenLong() throws InterruptedException {
+        StartShooterMotorsHigh();
         basketSystem.ReleaseGreen();
         currentState = ShooterState.RELEASING;
     }
@@ -64,14 +79,26 @@ public class TheShooterSystem {
         }
     }
 
+    public void shootPurple1Long() throws InterruptedException {
+        StartShooterMotorsHigh();
+        basketSystem.ReleasePurple1();
+        currentState = ShooterState.RELEASING;
+    }
+
+    public void shootPurple2Long() throws InterruptedException {
+        StartShooterMotorsHigh();
+        basketSystem.ReleasePurple2();
+        currentState = ShooterState.RELEASING;
+    }
+
     public void shootPurple1() throws InterruptedException {
-        StartShooterMotors();
+        StartShooterMotorsLow();
         basketSystem.ReleasePurple1();
         currentState = ShooterState.RELEASING;
     }
 
     public void shootPurple2() throws InterruptedException {
-        StartShooterMotors();
+        StartShooterMotorsLow();
         basketSystem.ReleasePurple2();
         currentState = ShooterState.RELEASING;
     }
