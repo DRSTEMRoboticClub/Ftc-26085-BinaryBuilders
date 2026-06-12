@@ -86,12 +86,25 @@ public class TeleOpBlue extends CommandOpMode {
             telemetry.addLine("=== DRIVEBASE ===");
             telemetry.addData("Heading", "%.1f°", drive.getHeading());
             telemetry.addData("PID Target", "%.1f°", drive.getTargetHeading());
-            telemetry.addData("Joy Sticks", "F:%.2f S:%.2f T:%.2f", 
+            telemetry.addData("Joy Sticks", "F:%.2f S:%.2f T:%.2f",
                 inputHandler.getForward(), inputHandler.getStrafe(), inputHandler.getTurn());
+            telemetry.addData("G1 L-Stick Y", "%.3f", gamepad1.left_stick_y);
+            telemetry.addData("G1 L-Stick X", "%.3f", gamepad1.left_stick_x);
+            telemetry.addData("G1 R-Stick X", "%.3f", gamepad1.right_stick_x);
+            telemetry.addData("G1 Active", inputHandler.isG1Active());
+            telemetry.addData("G2 Active", inputHandler.isG2Active());
+
+            // Error Detection
+            double totalInput = Math.abs(inputHandler.getForward()) + Math.abs(inputHandler.getStrafe()) + Math.abs(inputHandler.getTurn());
+            if (totalInput > 0.01 && (Math.abs(gamepad1.left_stick_y) < 0.01 && Math.abs(gamepad1.left_stick_x) < 0.01 && Math.abs(gamepad1.right_stick_x) < 0.01)) {
+                telemetry.addData("ERROR", "Input persisting after joystick release!");
+            }
             
             telemetry.addLine("=== SUBSYSTEMS ===");
             telemetry.addData("Shooter", inputHandler.isManualMode() ? "MANUAL" : "AUTO-AIM");
-            telemetry.addData("Hood Pos", "%.3f", hood.getPosition());
+            telemetry.addData("Launcher Power", "%.2f / Max %.2f",
+                shooter.getShooterPower(), org.firstinspires.ftc.teamcode.configs.ShooterConfig.MAX_LAUNCHER_POWER);
+            telemetry.addData("Hood Angle", "%.3f", hood.getPosition());
 
             telemetry.update();
         }

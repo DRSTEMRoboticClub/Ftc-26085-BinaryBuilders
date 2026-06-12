@@ -17,6 +17,7 @@ public class DriveSubsystem extends SubsystemBase {
     private final PIDController headingPID;
     private double targetHeading = 0;
     private boolean isSlowMode = false;
+    private boolean isVerySlow = false;
     private double cachedHeading = 0;
 
     public DriveSubsystem(HardwareMap hMap) {
@@ -34,14 +35,14 @@ public class DriveSubsystem extends SubsystemBase {
         // Standard Mecanum Inversion (Left side for counter-rotation)
         fl.setInverted(true);
         bl.setInverted(true);
-        fr.setInverted(false);
-        br.setInverted(false);
+        fr.setInverted(true);
+        br.setInverted(true);
 
         drive = new MecanumDrive(fl, fr, bl, br);
         headingPID = new PIDController(DriveConfig.HEADING_P, DriveConfig.HEADING_I, DriveConfig.HEADING_D);
         
         imu = hMap.get(IMU.class, HardwareConfig.IMU_NAME);
-        // Use your preferred orientation
+        // Control hub: USB facing LEFT, sticker facing BACKWARD
         imu.initialize(new IMU.Parameters(new RevHubOrientationOnRobot(
                 RevHubOrientationOnRobot.LogoFacingDirection.BACKWARD,
                 RevHubOrientationOnRobot.UsbFacingDirection.LEFT)));
@@ -61,10 +62,20 @@ public class DriveSubsystem extends SubsystemBase {
         this.isSlowMode = enabled;
     }
 
+    public void setVerySlow(boolean enabled) {
+        this.isVerySlow = enabled;
+    }
+
     public void driveFieldCentric(double strafe, double forward, double turn) {
         updateHeading();
+
+        // Apply deadzone
+        strafe = Math.abs(strafe) < DriveConfig.JOYSTICK_DEADZONE ? 0 : strafe;
+        forward = Math.abs(forward) < DriveConfig.JOYSTICK_DEADZONE ? 0 : forward;
+        turn = Math.abs(turn) < DriveConfig.JOYSTICK_DEADZONE ? 0 : turn;
+
         double currentHeading = cachedHeading;
-        
+
         // If HEADING_P is 0, this logic is skipped for manual control
         if (DriveConfig.HEADING_P > 0) {
             if (Math.abs(turn) > 0.05) {
@@ -75,10 +86,20 @@ public class DriveSubsystem extends SubsystemBase {
             }
         }
 
-        double multiplier = isSlowMode ? DriveConfig.SLOW_MODE_SCALE : DriveConfig.DRIVE_SCALE;
-        
+        // Determine speed multiplier
+        double speedMultiplier;
+        if (isVerySlow) {
+            speedMultiplier = DriveConfig.VERY_SLOW_MODE_SCALE;
+        } else if (isSlowMode) {
+            speedMultiplier = DriveConfig.SLOW_MODE_SPEED_SCALE;
+        } else {
+            speedMultiplier = DriveConfig.NORMAL_SPEED_SCALE;
+        }
+
+        double turnMultiplier = speedMultiplier * DriveConfig.TURN_SCALE;
+
         // Basic Mecanum move
-        drive.driveFieldCentric(strafe * multiplier, forward * multiplier, turn * multiplier, currentHeading);
+        drive.driveFieldCentric(strafe * speedMultiplier, forward * speedMultiplier, turn * turnMultiplier, currentHeading);
     }
 
     public double getHeading() {

@@ -9,10 +9,10 @@ public class HardwareConfig {
     public static String BL_NAME = "BLWheelMotor";
     public static String BR_NAME = "BRWheelMotor";
     public static String INTAKE_NAME = "IntakeMotor";
-    public static String TURRET_NAME = "TurretMotor";
+    public static String LAUNCHER_NAME = "ShooterMotor";
+    public static String TURRET_ROTATION_NAME = "TurretMotor";
     public static String LIMELIGHT_NAME = "LimeCam";
     public static String IMU_NAME = "imu";
-    public static String SHOOTER_NAME = "ShooterMotor";
     public static String STOPPER_NAME = "TurretStopper";
     public static String HOOD_NAME = "TurretHood";
 }

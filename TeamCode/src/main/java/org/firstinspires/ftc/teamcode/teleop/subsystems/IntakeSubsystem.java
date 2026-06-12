@@ -10,6 +10,7 @@ public class IntakeSubsystem extends SubsystemBase {
 
     public IntakeSubsystem(HardwareMap hMap) {
         intake = hMap.get(DcMotorEx.class, HardwareConfig.INTAKE_NAME);
+        intake.setDirection(DcMotorEx.Direction.REVERSE);
     }
 
     public void setPower(double power) {
