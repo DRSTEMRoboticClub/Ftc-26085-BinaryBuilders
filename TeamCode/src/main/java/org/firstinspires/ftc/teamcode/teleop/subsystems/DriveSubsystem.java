@@ -106,6 +106,11 @@ public class DriveSubsystem extends SubsystemBase {
         return cachedHeading;
     }
 
+    /** Expose the IMU so the Road Runner localizer can share one initialized handle. */
+    public IMU getImu() {
+        return imu;
+    }
+
     public double getTargetHeading() {
         return targetHeading;
     }

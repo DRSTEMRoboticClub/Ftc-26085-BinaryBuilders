@@ -81,6 +81,16 @@ public class ShooterSubsystem extends SubsystemBase {
         turretRotation.setPower(power);
     }
 
+    /** Raw TurretMotor encoder position (ticks). Used to derive turret angle. */
+    public int getTurretTicks() {
+        return turretRotation.getCurrentPosition();
+    }
+
+    /** Latest Limelight result (may be null / invalid). Used by AprilTag localizer. */
+    public LLResult getLimelightResult() {
+        return limelight != null ? limelight.getLatestResult() : null;
+    }
+
     public void setStopperPosition(double position) {
         stopper.setPosition(position);
     }
