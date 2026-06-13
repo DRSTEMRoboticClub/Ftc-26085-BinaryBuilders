@@ -23,4 +23,7 @@ public class ShooterConfig {
     // Launcher Max Power (tunable via G2 D-Pad Up/Down for polynomial calibration)
     public static double MAX_LAUNCHER_POWER = 1.0;
     public static double LAUNCHER_POWER_INCREMENT = 0.05;
+
+    // Velocity control ceiling. Trigger input scales 0..MAX_LAUNCHER_POWER of this RPM.
+    public static double MAX_LAUNCHER_RPM = 6000.0;
 }

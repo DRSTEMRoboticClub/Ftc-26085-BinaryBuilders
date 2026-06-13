@@ -1,7 +1,6 @@
 package org.firstinspires.ftc.teamcode.teleop.subsystems;
 
 import com.arcrobotics.ftclib.command.SubsystemBase;
-import com.arcrobotics.ftclib.controller.PIDController;
 import com.qualcomm.hardware.limelightvision.LLResult;
 import com.qualcomm.hardware.limelightvision.LLResultTypes;
 import com.qualcomm.hardware.limelightvision.Limelight3A;
@@ -21,12 +20,10 @@ public class ShooterSubsystem extends SubsystemBase {
     private final DcMotorEx turretRotation; // ShooterMotor - rotates turret left/right
     private final Servo stopper;
     private final Limelight3A limelight;
-    private final PIDController shooterPID;
 
     private boolean autoAimEnabled = true;
-    private static final double MAX_RPM = 5500.0;
-    private static final double TARGET_RPM = MAX_RPM * 0.30;
     private static final double ENCODER_CPR = 28.0;
+    private double targetShooterRpm = 0.0;
 
     public ShooterSubsystem(HardwareMap hMap) {
         launcherLeft = hMap.get(DcMotorEx.class, HardwareConfig.LAUNCHER_LEFT_NAME);
@@ -37,12 +34,13 @@ public class ShooterSubsystem extends SubsystemBase {
         // Motors share one shaft, so set opposite directions for matched wheel spin.
         launcherLeft.setDirection(DcMotorEx.Direction.REVERSE);
         launcherRight.setDirection(DcMotorEx.Direction.FORWARD);
+        launcherLeft.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        launcherRight.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        launcherLeft.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        launcherRight.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
         launcherLeft.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
         launcherRight.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
         turretRotation.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-
-        shooterPID = new PIDController(ShooterConfig.SHOOTER_P, ShooterConfig.SHOOTER_I, ShooterConfig.SHOOTER_D);
-        shooterPID.setSetPoint(TARGET_RPM);
 
         limelight = hMap.get(Limelight3A.class, HardwareConfig.LIMELIGHT_NAME);
         if (limelight != null) {
@@ -53,13 +51,26 @@ public class ShooterSubsystem extends SubsystemBase {
 
     public void setShooterPower(double power) {
         double maxPower = Range.clip(ShooterConfig.MAX_LAUNCHER_POWER, 0.0, 1.0);
-        double clipped = Range.clip(power, 0.0, maxPower);
-        launcherLeft.setPower(clipped);
-        launcherRight.setPower(clipped);
+        double clipped = Range.clip(power, -maxPower, maxPower);
+        setShooterVelocityRpm(clipped * ShooterConfig.MAX_LAUNCHER_RPM);
     }
 
     public double getShooterPower() {
-        return (launcherLeft.getPower() + launcherRight.getPower()) / 2.0;
+        double maxRpm = Math.max(1.0, ShooterConfig.MAX_LAUNCHER_RPM);
+        return Range.clip(targetShooterRpm / maxRpm, -1.0, 1.0);
+    }
+
+    public void setShooterVelocityRpm(double rpm) {
+        targetShooterRpm = rpm;
+        double ticksPerSecond = rpmToTicksPerSecond(rpm);
+        launcherLeft.setVelocity(ticksPerSecond);
+        launcherRight.setVelocity(ticksPerSecond);
+    }
+
+    public double getShooterVelocityRpm() {
+        double leftRpm = ticksPerSecondToRpm(Math.abs(launcherLeft.getVelocity()));
+        double rightRpm = ticksPerSecondToRpm(Math.abs(launcherRight.getVelocity()));
+        return (leftRpm + rightRpm) / 2.0;
     }
 
     public void setTurretPower(double power) {
@@ -100,5 +111,13 @@ public class ShooterSubsystem extends SubsystemBase {
 
     public void stopLimelight() {
         if (limelight != null) limelight.stop();
+    }
+
+    private double rpmToTicksPerSecond(double rpm) {
+        return (rpm * ENCODER_CPR) / 60.0;
+    }
+
+    private double ticksPerSecondToRpm(double ticksPerSecond) {
+        return (ticksPerSecond * 60.0) / ENCODER_CPR;
     }
 }

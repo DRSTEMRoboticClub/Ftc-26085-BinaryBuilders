@@ -94,7 +94,7 @@ public class PriorityInputHandler {
         drive.driveFieldCentric(lastStrafe, lastForward, lastTurn);
 
         // Shooter Logic (G1 Primary)
-        // Right Trigger - Ramp up launcher power (direct control)
+        // Right Trigger - Ramp up launcher speed target (velocity control)
         double rightTriggerPower = g1.getTrigger(GamepadKeys.Trigger.RIGHT_TRIGGER);
         shooter.setShooterPower(rightTriggerPower);
 
@@ -149,8 +149,8 @@ public class PriorityInputHandler {
         // runTurretControl handles auto-aim logic internally
         shooter.runTurretControl(turretManual, rightTriggerPower > 0.1);
 
-        // G2 Launcher Max Power Tuning (D-Pad Up/Down)
-        // Discrete increments for finding optimal close/far power values
+        // G2 Launcher Max Command Tuning (D-Pad Up/Down)
+        // Scales trigger input before converting to velocity target
         if (g2.wasJustPressed(GamepadKeys.Button.DPAD_UP)) {
             ShooterConfig.MAX_LAUNCHER_POWER = Math.min(1.0,
                 ShooterConfig.MAX_LAUNCHER_POWER + ShooterConfig.LAUNCHER_POWER_INCREMENT);
