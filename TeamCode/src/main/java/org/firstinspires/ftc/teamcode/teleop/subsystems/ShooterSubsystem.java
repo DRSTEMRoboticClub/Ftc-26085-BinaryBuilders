@@ -16,7 +16,8 @@ import org.firstinspires.ftc.teamcode.configs.ShooterConfig;
 import java.util.List;
 
 public class ShooterSubsystem extends SubsystemBase {
-    private final DcMotorEx launcher;       // TurretMotor  - ramps up to launch balls
+    private final DcMotorEx launcherLeft;
+    private final DcMotorEx launcherRight;
     private final DcMotorEx turretRotation; // ShooterMotor - rotates turret left/right
     private final Servo stopper;
     private final Limelight3A limelight;
@@ -28,12 +29,16 @@ public class ShooterSubsystem extends SubsystemBase {
     private static final double ENCODER_CPR = 28.0;
 
     public ShooterSubsystem(HardwareMap hMap) {
-        launcher = hMap.get(DcMotorEx.class, HardwareConfig.LAUNCHER_NAME);
+        launcherLeft = hMap.get(DcMotorEx.class, HardwareConfig.LAUNCHER_LEFT_NAME);
+        launcherRight = hMap.get(DcMotorEx.class, HardwareConfig.LAUNCHER_RIGHT_NAME);
         turretRotation = hMap.get(DcMotorEx.class, HardwareConfig.TURRET_ROTATION_NAME);
         stopper = hMap.get(Servo.class, HardwareConfig.STOPPER_NAME);
 
-        launcher.setDirection(DcMotorEx.Direction.REVERSE);
-        launcher.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+        // Motors share one shaft, so set opposite directions for matched wheel spin.
+        launcherLeft.setDirection(DcMotorEx.Direction.REVERSE);
+        launcherRight.setDirection(DcMotorEx.Direction.FORWARD);
+        launcherLeft.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+        launcherRight.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
         turretRotation.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
 
         shooterPID = new PIDController(ShooterConfig.SHOOTER_P, ShooterConfig.SHOOTER_I, ShooterConfig.SHOOTER_D);
@@ -49,11 +54,12 @@ public class ShooterSubsystem extends SubsystemBase {
     public void setShooterPower(double power) {
         double maxPower = Range.clip(ShooterConfig.MAX_LAUNCHER_POWER, 0.0, 1.0);
         double clipped = Range.clip(power, 0.0, maxPower);
-        launcher.setPower(clipped);
+        launcherLeft.setPower(clipped);
+        launcherRight.setPower(clipped);
     }
 
     public double getShooterPower() {
-        return launcher.getPower();
+        return (launcherLeft.getPower() + launcherRight.getPower()) / 2.0;
     }
 
     public void setTurretPower(double power) {

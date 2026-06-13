@@ -22,7 +22,8 @@
 ### Subsystem Motors
 | Motor | Name | Purpose | Direction | Power |
 |-------|------|---------|-----------|-------|
-| Shooter | `ShooterMotor` | Launch balls | REVERSE | 80% (configurable) |
+| Shooter Left | `ShooterMotorL` | Launch balls (shared shaft) | REVERSE | 80% (configurable) |
+| Shooter Right | `ShooterMotorR` | Launch balls (shared shaft) | FORWARD | 80% (configurable) |
 | Turret | `TurretMotor` | Rotate turret | FORWARD | Variable (Auto-Aim) |
 | Intake | `IntakeMotor` | Collect balls | REVERSE | Variable |
 
