@@ -98,7 +98,10 @@
 ### Controller 2 (Operator)
 | Input | Action |
 |-------|--------|
-| **D-Pad Up/Down** | Adjust hood angle |
+| **Y Button** | Toggle Shooter RPM Hold Mode |
+| **D-Pad Up/Down** | Tune Shooter Hold RPM |
+| **D-Pad Left/Right** | Tune Hood Angle |
+| **R Bumper (hold)** | Fine Tuning Step (RPM + Hood) |
 | **A Button** | Emergency reverse |
 
 ---

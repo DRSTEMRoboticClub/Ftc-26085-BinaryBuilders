@@ -5,11 +5,16 @@ import com.arcrobotics.ftclib.gamepad.GamepadKeys;
 import org.firstinspires.ftc.teamcode.configs.*;
 import org.firstinspires.ftc.teamcode.teleop.subsystems.*;
 
+import java.util.HashMap;
+import java.util.Map;
+
 public class PriorityInputHandler {
     private final GamepadEx g1, g2;
     private boolean g1HasPriority = true;
     private boolean manualMode = false;
     private boolean verySlowMode = false;
+    private boolean shooterHoldMode = false;
+    private final Map<String, Long> nextRepeatTimesMs = new HashMap<>();
 
     private double lastForward, lastStrafe, lastTurn;
 
@@ -24,6 +29,14 @@ public class PriorityInputHandler {
 
     public boolean isManualMode() {
         return manualMode;
+    }
+
+    public boolean isShooterHoldMode() {
+        return shooterHoldMode;
+    }
+
+    public double getManualShooterTargetRpm() {
+        return ShooterConfig.MANUAL_TARGET_RPM;
     }
 
     public double getForward() { return lastForward; }
@@ -94,9 +107,18 @@ public class PriorityInputHandler {
         drive.driveFieldCentric(lastStrafe, lastForward, lastTurn);
 
         // Shooter Logic (G1 Primary)
-        // Right Trigger - Ramp up launcher speed target (velocity control)
+        // G2 Y toggles RPM hold mode for repeatable shooting while tuning.
+        if (g2.wasJustPressed(GamepadKeys.Button.Y)) {
+            shooterHoldMode = !shooterHoldMode;
+        }
+
+        // Right Trigger - ramp launcher speed target in trigger mode.
         double rightTriggerPower = g1.getTrigger(GamepadKeys.Trigger.RIGHT_TRIGGER);
-        shooter.setShooterPower(rightTriggerPower);
+        if (shooterHoldMode) {
+            shooter.setShooterVelocityRpm(ShooterConfig.MANUAL_TARGET_RPM);
+        } else {
+            shooter.setShooterPower(rightTriggerPower);
+        }
 
         // Left Bumper - Shoot (Open Stopper + Auto Intake)
         if (g1.getButton(GamepadKeys.Button.LEFT_BUMPER)) {
@@ -149,14 +171,45 @@ public class PriorityInputHandler {
         // runTurretControl handles auto-aim logic internally
         shooter.runTurretControl(turretManual, rightTriggerPower > 0.1);
 
-        // G2 Launcher Max Command Tuning (D-Pad Up/Down)
-        // Scales trigger input before converting to velocity target
-        if (g2.wasJustPressed(GamepadKeys.Button.DPAD_UP)) {
-            ShooterConfig.MAX_LAUNCHER_POWER = Math.min(1.0,
-                ShooterConfig.MAX_LAUNCHER_POWER + ShooterConfig.LAUNCHER_POWER_INCREMENT);
-        } else if (g2.wasJustPressed(GamepadKeys.Button.DPAD_DOWN)) {
-            ShooterConfig.MAX_LAUNCHER_POWER = Math.max(0.0,
-                ShooterConfig.MAX_LAUNCHER_POWER - ShooterConfig.LAUNCHER_POWER_INCREMENT);
+        // G2 tuning controls with debounced auto-repeat for accurate step changes.
+        long now = System.currentTimeMillis();
+        double rpmStep = g2.getButton(GamepadKeys.Button.RIGHT_BUMPER)
+                ? ShooterConfig.RPM_TUNE_STEP_FINE
+                : ShooterConfig.RPM_TUNE_STEP_COARSE;
+        double hoodStep = g2.getButton(GamepadKeys.Button.RIGHT_BUMPER)
+                ? HoodConfig.HOOD_FINE_INCREMENT
+                : HoodConfig.HOOD_INCREMENT;
+
+        if (shouldStep("g2_dpad_up", g2.gamepad.dpad_up, g2.wasJustPressed(GamepadKeys.Button.DPAD_UP), now)) {
+            ShooterConfig.MANUAL_TARGET_RPM = Math.min(ShooterConfig.MAX_LAUNCHER_RPM,
+                    ShooterConfig.MANUAL_TARGET_RPM + rpmStep);
         }
+        if (shouldStep("g2_dpad_down", g2.gamepad.dpad_down, g2.wasJustPressed(GamepadKeys.Button.DPAD_DOWN), now)) {
+            ShooterConfig.MANUAL_TARGET_RPM = Math.max(0.0,
+                    ShooterConfig.MANUAL_TARGET_RPM - rpmStep);
+        }
+        if (shouldStep("g2_dpad_right", g2.gamepad.dpad_right, g2.wasJustPressed(GamepadKeys.Button.DPAD_RIGHT), now)) {
+            hood.adjustPosition(hoodStep);
+        }
+        if (shouldStep("g2_dpad_left", g2.gamepad.dpad_left, g2.wasJustPressed(GamepadKeys.Button.DPAD_LEFT), now)) {
+            hood.adjustPosition(-hoodStep);
+        }
+    }
+
+    private boolean shouldStep(String key, boolean pressed, boolean justPressed, long nowMs) {
+        if (justPressed) {
+            nextRepeatTimesMs.put(key, nowMs + ShooterConfig.TUNE_INITIAL_REPEAT_MS);
+            return true;
+        }
+        if (!pressed) {
+            nextRepeatTimesMs.remove(key);
+            return false;
+        }
+        long next = nextRepeatTimesMs.getOrDefault(key, nowMs + ShooterConfig.TUNE_INITIAL_REPEAT_MS);
+        if (nowMs >= next) {
+            nextRepeatTimesMs.put(key, nowMs + ShooterConfig.TUNE_REPEAT_MS);
+            return true;
+        }
+        return false;
     }
 }

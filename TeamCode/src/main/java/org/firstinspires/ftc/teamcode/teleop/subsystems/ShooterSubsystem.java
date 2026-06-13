@@ -73,6 +73,10 @@ public class ShooterSubsystem extends SubsystemBase {
         return (leftRpm + rightRpm) / 2.0;
     }
 
+    public double getTargetShooterRpm() {
+        return targetShooterRpm;
+    }
+
     public void setTurretPower(double power) {
         turretRotation.setPower(power);
     }

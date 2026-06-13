@@ -104,7 +104,12 @@ public class TeleOpBlue extends CommandOpMode {
             telemetry.addData("Shooter", inputHandler.isManualMode() ? "MANUAL" : "AUTO-AIM");
             telemetry.addData("Launcher Power", "%.2f / Max %.2f",
                 shooter.getShooterPower(), org.firstinspires.ftc.teamcode.configs.ShooterConfig.MAX_LAUNCHER_POWER);
+            telemetry.addData("Shooter Mode", inputHandler.isShooterHoldMode() ? "HOLD RPM (G2 Y)" : "TRIGGER");
+            telemetry.addData("Shooter Target RPM", "%.0f", shooter.getTargetShooterRpm());
+            telemetry.addData("Shooter Actual RPM", "%.0f", shooter.getShooterVelocityRpm());
+            telemetry.addData("Tuned Hold RPM", "%.0f", inputHandler.getManualShooterTargetRpm());
             telemetry.addData("Hood Angle", "%.3f", hood.getPosition());
+            telemetry.addData("Tune Controls", "G2 Dpad U/D=RPM L/R=Hood, RB=Fine");
 
             telemetry.update();
         }

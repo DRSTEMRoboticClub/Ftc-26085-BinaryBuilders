@@ -26,4 +26,13 @@ public class ShooterConfig {
 
     // Velocity control ceiling. Trigger input scales 0..MAX_LAUNCHER_POWER of this RPM.
     public static double MAX_LAUNCHER_RPM = 6000.0;
+
+    // Manual shooter hold tuning (used from TeleOp controls)
+    public static double MANUAL_TARGET_RPM = 3500.0;
+    public static double RPM_TUNE_STEP_COARSE = 100.0;
+    public static double RPM_TUNE_STEP_FINE = 25.0;
+
+    // Button repeat timing for accurate tuning steps
+    public static int TUNE_INITIAL_REPEAT_MS = 300;
+    public static int TUNE_REPEAT_MS = 100;
 }
