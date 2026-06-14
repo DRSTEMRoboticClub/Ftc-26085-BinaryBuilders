@@ -100,6 +100,14 @@ public class TeleOpBlue extends CommandOpMode {
                 telemetry.addData("ERROR", "Input persisting after joystick release!");
             }
             
+            telemetry.addLine("=== LIMELIGHT / TURRET ===");
+            Double trackedTx = shooter.getTrackedTagTx();
+            telemetry.addData("Auto-Aim",    shooter.isAutoAimEnabled() ? "ON (X to disable)" : "OFF - MANUAL (X to enable)");
+            telemetry.addData("Tracking ID", org.firstinspires.ftc.teamcode.configs.ShooterConfig.TRACKED_TAG_ID);
+            telemetry.addData("Tracked TX",  trackedTx != null ? String.format("%.1f°", trackedTx) : "NOT SEEN");
+            telemetry.addData("Sees Tags",   shooter.getVisibleTagIds());
+            telemetry.addData("Turret Pwr",  "%.3f", shooter.getLastTurretPower());
+
             telemetry.addLine("=== SUBSYSTEMS ===");
             telemetry.addData("Shooter", inputHandler.isManualMode() ? "MANUAL" : "AUTO-AIM");
             telemetry.addData("Launcher Power", "%.2f / Max %.2f",

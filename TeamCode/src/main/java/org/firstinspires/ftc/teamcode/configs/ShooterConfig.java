@@ -5,8 +5,10 @@ import com.acmerobotics.dashboard.config.Config;
 @Config
 public class ShooterConfig {
     public static double TURRET_POWER_SCALE = 0.4;
-    public static double AUTO_AIM_P_GAIN = 0.02;
-    public static int TRACKED_TAG_ID = 21;
+    public static double AUTO_AIM_P_GAIN = 0.05;         // proportional gain on TX error (degrees → power)
+    public static double AUTO_AIM_DEADBAND_DEG = 1.5;    // stop correcting when tag is within this many degrees of centre
+    public static double AUTO_AIM_MIN_POWER = 0.15;      // floor power to overcome BRAKE-mode stiction
+    public static int TRACKED_TAG_ID = 20; // Blue alliance hub tag; Red = 24
     public static int APRILTAG_PIPELINE = 0;
 
     public static double STOPPER_CLOSED = 0.0;

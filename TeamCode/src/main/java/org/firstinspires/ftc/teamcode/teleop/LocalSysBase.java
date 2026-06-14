@@ -8,10 +8,12 @@ import com.qualcomm.robotcore.hardware.VoltageSensor;
 
 import org.firstinspires.ftc.teamcode.configs.LocalizationConfig;
 import org.firstinspires.ftc.teamcode.configs.ShooterConfig;
-import org.firstinspires.ftc.teamcode.teleop.localization.AprilTagLocalizer;
-import org.firstinspires.ftc.teamcode.teleop.localization.TurretTracker;
 import org.firstinspires.ftc.teamcode.teleop.subsystems.*;
 import org.firstinspires.ftc.teamcode.tools.PriorityInputHandler;
+import org.firstinspires.ftc.teamcode.tools.localization.AprilTagLocalizer;
+import org.firstinspires.ftc.teamcode.tools.localization.MecanumLocalizer;
+import org.firstinspires.ftc.teamcode.tools.localization.PanelsFieldDrawer;
+import org.firstinspires.ftc.teamcode.tools.localization.TurretTracker;
 
 import java.util.List;
 
@@ -83,6 +85,8 @@ public abstract class LocalSysBase extends CommandOpMode {
 
         // Make sure this OpMode tracks ITS alliance tag everywhere it matters.
         ShooterConfig.TRACKED_TAG_ID = getTagId();
+
+        PanelsFieldDrawer.init();
     }
 
     @Override
@@ -107,7 +111,11 @@ public abstract class LocalSysBase extends CommandOpMode {
             turretTracker.update(shooter, getTagId());   // overrides turret for auto-track
             applyAprilTagCorrection();
 
-            // 3) Telemetry.
+            // 3) Field visualisation — draw robot position on Panels field view.
+            PanelsFieldDrawer.update(localizer.getXInches(), localizer.getYInches(),
+                    Math.toRadians(localizer.getHeadingDegrees()));
+
+            // 5) Telemetry.
             double voltage = batteryVoltageSensor.getVoltage();
             if (voltage < minVoltage) minVoltage = voltage;
             renderTelemetry(voltage, loopTime);

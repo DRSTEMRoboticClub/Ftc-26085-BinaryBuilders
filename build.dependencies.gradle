@@ -8,6 +8,11 @@ repositories {
 
 dependencies {
     implementation 'com.pedropathing:ftc:2.1.2'
+    // PedroPathing telemetry adapter + Panels dashboard (https://panels.bylazar.com).
+    // Panels web UI: join the robot's WiFi, then open http://192.168.43.1:8001 (Control
+    // Hub) or http://192.168.49.1:8001 (phone RC). Needs compileSdk >= 34 (set to 35).
+    implementation 'com.pedropathing:telemetry:1.0.0'
+    implementation 'com.bylazar:fullpanels:1.0.12'
     // Road Runner 1.0 localization framework (https://rr.brott.dev/docs/v1-0/installation/)
     implementation 'com.acmerobotics.roadrunner:ftc:0.1.21'
     implementation 'com.acmerobotics.roadrunner:core:1.0.1'
