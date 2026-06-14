@@ -31,7 +31,7 @@ public class ShooterConfig {
 
     // Shooter encoder spec (GoBILDA 5000 RPM motor): 537.7 counts per revolution.
     public static double SHOOTER_ENCODER_CYCLES_PER_REV = 7.0;
-    public static double SHOOTER_ENCODER_EVENTS_PER_REV = 537.7;
+    public static double SHOOTER_ENCODER_EVENTS_PER_REV = 28;
 
     // Manual shooter hold tuning (used from TeleOp controls)
     public static double MANUAL_TARGET_RPM = 3500.0;

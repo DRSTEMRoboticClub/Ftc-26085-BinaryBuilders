@@ -112,15 +112,18 @@ public class PriorityInputHandler {
             shooterHoldMode = !shooterHoldMode;
         }
 
-        // Right Trigger - ramp launcher speed target.
-        // In trigger mode, scale up to the tuned manual target so RPM tuning always applies.
+        // Right Trigger - ramp launcher to tuned target RPM while held.
         double rightTriggerPower = g1.getTrigger(GamepadKeys.Trigger.RIGHT_TRIGGER);
+        boolean rightTriggerPressed = rightTriggerPower > ControlsConfig.TRIGGER_THRESHOLD;
         boolean shootPressed = g1.getButton(GamepadKeys.Button.LEFT_BUMPER);
-        if (shooterHoldMode || shootPressed) {
-            shooter.setShooterVelocityRpm(ShooterConfig.MANUAL_TARGET_RPM);
+        if (shooterHoldMode || shootPressed || rightTriggerPressed) {
+            shooter.setShooterVelocityRpm(getManualShooterTargetRpm());
         } else {
-            shooter.setShooterVelocityRpm(rightTriggerPower * ShooterConfig.MANUAL_TARGET_RPM);
+            shooter.setShooterVelocityRpm(0);
         }
+
+        // Run flywheel PID every loop regardless of trigger state
+        shooter.updatePID();
 
         // Left Bumper - Shoot (Open Stopper + Auto Intake)
         if (shootPressed) {
