@@ -5,6 +5,7 @@ import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.pedropathing.paths.Path;
 import com.pedropathing.geometry.Pose;
 import com.pedropathing.geometry.BezierLine;
+import org.firstinspires.ftc.teamcode.configs.ShooterConfig;
 import org.firstinspires.ftc.teamcode.teleop.subsystems.ShooterSubsystem;
 
 @Autonomous(name = "Blue Left Auto", group = "Production")
@@ -26,13 +27,13 @@ public class AutoBlueLeft extends LinearOpMode {
         while (opModeIsActive() && runner.isBusy()) {
             runner.update();
             // Parallel: Spin up shooter while driving
-            shooter.setShooterPower(0.8);
+            shooter.setShooterVelocityRpm(ShooterConfig.MANUAL_TARGET_RPM);
         }
 
         // Fire
         shooter.setStopperPosition(1.0);
         sleep(500);
-        shooter.setShooterPower(0);
+        shooter.setShooterVelocityRpm(0);
         
         shooter.stopLimelight();
     }
