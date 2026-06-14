@@ -24,6 +24,11 @@ public class ShooterSubsystem extends SubsystemBase {
     private boolean autoAimEnabled = true;
     private double targetShooterRpm = 0.0;
 
+    // Custom flywheel PID state
+    private double pidIntegral = 0.0;
+    private double pidLastError = 0.0;
+    private long pidLastTimeNs = 0;
+
     public ShooterSubsystem(HardwareMap hMap) {
         launcherLeft = hMap.get(DcMotorEx.class, HardwareConfig.LAUNCHER_LEFT_NAME);
         launcherRight = hMap.get(DcMotorEx.class, HardwareConfig.LAUNCHER_RIGHT_NAME);
@@ -31,12 +36,12 @@ public class ShooterSubsystem extends SubsystemBase {
         stopper = hMap.get(Servo.class, HardwareConfig.STOPPER_NAME);
 
         // Motors share one shaft, so set opposite directions for matched wheel spin.
-        launcherLeft.setDirection(DcMotorEx.Direction.REVERSE);
-        launcherRight.setDirection(DcMotorEx.Direction.FORWARD);
+        launcherLeft.setDirection(DcMotorEx.Direction.FORWARD);
+        launcherRight.setDirection(DcMotorEx.Direction.REVERSE);
         launcherLeft.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
         launcherRight.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-        launcherLeft.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-        launcherRight.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        launcherLeft.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        launcherRight.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         launcherLeft.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
         launcherRight.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
         turretRotation.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
@@ -51,9 +56,37 @@ public class ShooterSubsystem extends SubsystemBase {
     public void setShooterVelocityRpm(double rpm) {
         double maxRpm = Math.max(1.0, ShooterConfig.MAX_LAUNCHER_RPM);
         targetShooterRpm = Range.clip(rpm, -maxRpm, maxRpm);
-        double ticksPerSecond = rpmToTicksPerSecond(targetShooterRpm);
-        launcherLeft.setVelocity(ticksPerSecond);
-        launcherRight.setVelocity(ticksPerSecond);
+    }
+
+    /** Must be called every loop iteration to drive the flywheel PID. */
+    public void updatePID() {
+        if (targetShooterRpm == 0.0) {
+            launcherLeft.setPower(0);
+            launcherRight.setPower(0);
+            pidIntegral = 0.0;
+            pidLastError = 0.0;
+            pidLastTimeNs = 0;
+            return;
+        }
+
+        double actualRpm = getShooterVelocityRpm();
+        double error = targetShooterRpm - actualRpm;
+
+        long nowNs = System.nanoTime();
+        double dt = (pidLastTimeNs == 0) ? 0.02 : (nowNs - pidLastTimeNs) / 1.0e9;
+        pidLastTimeNs = nowNs;
+
+        pidIntegral += error * dt;
+        double derivative = (dt > 0) ? (error - pidLastError) / dt : 0.0;
+        pidLastError = error;
+
+        double output = ShooterConfig.SHOOTER_P * error
+                + ShooterConfig.SHOOTER_I * pidIntegral
+                + ShooterConfig.SHOOTER_D * derivative;
+
+        output = Range.clip(output, 0.0, 1.0);
+        launcherLeft.setPower(output);
+        launcherRight.setPower(output);
     }
 
     public double getShooterVelocityRpm() {
