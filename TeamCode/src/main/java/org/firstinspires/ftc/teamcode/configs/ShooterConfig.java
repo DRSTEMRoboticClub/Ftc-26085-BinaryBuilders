@@ -27,6 +27,10 @@ public class ShooterConfig {
     // Velocity control ceiling. Trigger input scales 0..MAX_LAUNCHER_POWER of this RPM.
     public static double MAX_LAUNCHER_RPM = 6000.0;
 
+    // Shooter encoder spec (per motor output shaft): 7 cycles/rev, 28 countable events/rev.
+    public static double SHOOTER_ENCODER_CYCLES_PER_REV = 7.0;
+    public static double SHOOTER_ENCODER_EVENTS_PER_REV = 28.0;
+
     // Manual shooter hold tuning (used from TeleOp controls)
     public static double MANUAL_TARGET_RPM = 3500.0;
     public static double RPM_TUNE_STEP_COARSE = 100.0;

@@ -22,7 +22,6 @@ public class ShooterSubsystem extends SubsystemBase {
     private final Limelight3A limelight;
 
     private boolean autoAimEnabled = true;
-    private static final double ENCODER_CPR = 28.0;
     private double targetShooterRpm = 0.0;
 
     public ShooterSubsystem(HardwareMap hMap) {
@@ -128,10 +127,10 @@ public class ShooterSubsystem extends SubsystemBase {
     }
 
     private double rpmToTicksPerSecond(double rpm) {
-        return (rpm * ENCODER_CPR) / 60.0;
+        return (rpm * ShooterConfig.SHOOTER_ENCODER_EVENTS_PER_REV) / 60.0;
     }
 
     private double ticksPerSecondToRpm(double ticksPerSecond) {
-        return (ticksPerSecond * 60.0) / ENCODER_CPR;
+        return (ticksPerSecond * 60.0) / ShooterConfig.SHOOTER_ENCODER_EVENTS_PER_REV;
     }
 }
