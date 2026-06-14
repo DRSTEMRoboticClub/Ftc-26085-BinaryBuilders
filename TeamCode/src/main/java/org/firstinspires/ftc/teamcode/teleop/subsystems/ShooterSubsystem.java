@@ -9,6 +9,7 @@ import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.Range;
+import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.teamcode.configs.HardwareConfig;
 import org.firstinspires.ftc.teamcode.configs.ShooterConfig;
 
@@ -61,14 +62,14 @@ public class ShooterSubsystem extends SubsystemBase {
 
     public void setShooterVelocityRpm(double rpm) {
         targetShooterRpm = rpm;
-        double ticksPerSecond = rpmToTicksPerSecond(rpm);
-        launcherLeft.setVelocity(ticksPerSecond);
-        launcherRight.setVelocity(ticksPerSecond);
+        double degPerSecond = rpmToDegreesPerSecond(rpm);
+        launcherLeft.setVelocity(degPerSecond, AngleUnit.DEGREES);
+        launcherRight.setVelocity(degPerSecond, AngleUnit.DEGREES);
     }
 
     public double getShooterVelocityRpm() {
-        double leftRpm = ticksPerSecondToRpm(Math.abs(launcherLeft.getVelocity()));
-        double rightRpm = ticksPerSecondToRpm(Math.abs(launcherRight.getVelocity()));
+        double leftRpm = degreesPerSecondToRpm(Math.abs(launcherLeft.getVelocity(AngleUnit.DEGREES)));
+        double rightRpm = degreesPerSecondToRpm(Math.abs(launcherRight.getVelocity(AngleUnit.DEGREES)));
         return (leftRpm + rightRpm) / 2.0;
     }
 
@@ -172,11 +173,11 @@ public class ShooterSubsystem extends SubsystemBase {
         if (limelight != null) limelight.stop();
     }
 
-    private double rpmToTicksPerSecond(double rpm) {
-        return (rpm * ShooterConfig.SHOOTER_ENCODER_EVENTS_PER_REV) / 60.0;
+    private double rpmToDegreesPerSecond(double rpm) {
+        return rpm * 6.0;
     }
 
-    private double ticksPerSecondToRpm(double ticksPerSecond) {
-        return (ticksPerSecond * 60.0) / ShooterConfig.SHOOTER_ENCODER_EVENTS_PER_REV;
+    private double degreesPerSecondToRpm(double degreesPerSecond) {
+        return degreesPerSecond / 6.0;
     }
 }
