@@ -77,7 +77,7 @@ public class PriorityInputHandler {
         // Emergency Logic (A button on either)
         if (g1.gamepad.a || g2.gamepad.a) {
             intake.setPower(IntakeConfig.INTAKE_REV_POWER);
-            shooter.setShooterPower(-0.5);
+            shooter.setShooterVelocityRpm(-0.5 * ShooterConfig.MAX_LAUNCHER_RPM);
             shooter.setStopperPosition(ShooterConfig.STOPPER_OPEN);
             return;
         }
@@ -115,14 +115,15 @@ public class PriorityInputHandler {
         // Right Trigger - ramp launcher speed target.
         // In trigger mode, scale up to the tuned manual target so RPM tuning always applies.
         double rightTriggerPower = g1.getTrigger(GamepadKeys.Trigger.RIGHT_TRIGGER);
-        if (shooterHoldMode) {
+        boolean shootPressed = g1.getButton(GamepadKeys.Button.LEFT_BUMPER);
+        if (shooterHoldMode || shootPressed) {
             shooter.setShooterVelocityRpm(ShooterConfig.MANUAL_TARGET_RPM);
         } else {
             shooter.setShooterVelocityRpm(rightTriggerPower * ShooterConfig.MANUAL_TARGET_RPM);
         }
 
         // Left Bumper - Shoot (Open Stopper + Auto Intake)
-        if (g1.getButton(GamepadKeys.Button.LEFT_BUMPER)) {
+        if (shootPressed) {
             shooter.setStopperPosition(ShooterConfig.STOPPER_OPEN);
             intake.setPower(IntakeConfig.INTAKE_FWD_POWER);
         } else {
