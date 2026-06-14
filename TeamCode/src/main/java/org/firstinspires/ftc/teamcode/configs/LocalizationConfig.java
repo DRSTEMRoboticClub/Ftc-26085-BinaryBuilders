@@ -70,7 +70,13 @@ public class LocalizationConfig {
     public static double TURRET_FLIP_HYSTERESIS = 20.0;
 
     /** Proportional gain for centering the tag (power per degree of tx). */
-    public static double TURRET_TRACK_P_GAIN = 0.02;
+    public static double TURRET_TRACK_P_GAIN = 0.05;
+
+    /** Stop correcting when tag is within this many degrees of centre (prevents hunting). */
+    public static double TURRET_TRACK_DEADBAND_DEG = 1.5;
+
+    /** Floor power to overcome BRAKE-mode stiction on the turret motor. */
+    public static double TURRET_TRACK_MIN_POWER = 0.15;
 
     /** Max |power| the auto turret tracker will command. */
     public static double TURRET_TRACK_MAX_POWER = 0.6;

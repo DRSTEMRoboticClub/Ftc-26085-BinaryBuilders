@@ -1,7 +1,6 @@
 package org.firstinspires.ftc.teamcode.autoop;
 
 import com.acmerobotics.dashboard.config.Config;
-import com.acmerobotics.roadrunner.Pose2d;
 import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.Pose;
 import com.pedropathing.paths.Path;
@@ -54,7 +53,7 @@ public class PedroAutoRunner {
     private boolean tagStackReady = false;
 
     private AprilTagLocalizer.Observation lastObs = new AprilTagLocalizer.Observation();
-    private Pose2d lastCorrectedPose = null;
+    private Pose lastCorrectedPose = null;
 
     public PedroAutoRunner(HardwareMap hMap) {
         follower = PedroConstants.createFollower(hMap);
@@ -130,8 +129,8 @@ public class PedroAutoRunner {
 
         lastCorrectedPose = obs.correctedPose;
         double a = TAG_BLEND_ALPHA;
-        double fusedX = current.getX() + a * (lastCorrectedPose.position.x - current.getX());
-        double fusedY = current.getY() + a * (lastCorrectedPose.position.y - current.getY());
+        double fusedX = current.getX() + a * (lastCorrectedPose.getX() - current.getX());
+        double fusedY = current.getY() + a * (lastCorrectedPose.getY() - current.getY());
         // Heading stays from Pedro odometry; only X/Y are nudged toward the tag.
         follower.setPose(new Pose(fusedX, fusedY, current.getHeading()));
     }
@@ -140,7 +139,7 @@ public class PedroAutoRunner {
         return lastObs;
     }
 
-    public Pose2d getLastCorrectedPose() {
+    public Pose getLastCorrectedPose() {
         return lastCorrectedPose;
     }
 

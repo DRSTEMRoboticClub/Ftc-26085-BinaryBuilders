@@ -41,4 +41,36 @@ public class ShooterConfig {
     // Button repeat timing for accurate tuning steps
     public static int TUNE_INITIAL_REPEAT_MS = 300;
     public static int TUNE_REPEAT_MS = 100;
+
+    // ── Distance-based auto-compensation ──────────────────────────────────
+    // When USE_DISTANCE_COMPENSATION = true, the AprilTag planar distance drives both
+    // the flywheel target RPM and the hood pitch via calibrated cubic polynomials
+    // (Horner form — one multiply-add per coefficient, cheap every loop).
+    //
+    // Calibration data (motorValues.md):
+    //   21 cm → 3000 RPM, pitch 1.00
+    //  156 cm → 3800 RPM, pitch 0.61
+    //  190 cm → 4000 RPM, pitch 0.50
+    //  237 cm → 4200 RPM, pitch 0.36
+    //  318 cm → 4800 RPM, pitch 0.21
+    //
+    // Toggle via FTC Dashboard — leave false until the robot has been localizer-tuned.
+    public static boolean USE_DISTANCE_COMPENSATION = false;
+
+    /**
+     * Flywheel target (RPM) for a given camera-to-tag distance in centimetres.
+     * tune = 6.5185e-5·d³ − 3.2190e-2·d² + 9.9130·d + 2804.79
+     */
+    public static double hoodTuneAngle(double d) {
+        return ((6.5185466572e-05 * d - 3.2189951750e-02) * d + 9.9130248300) * d + 2804.7882679;
+    }
+
+    /**
+     * Hood pitch servo position [0.0 .. 1.0] for a given distance in centimetres.
+     * pitch = 2.8694e-8·d³ − 1.2812e-5·d² − 1.4227e-3·d + 1.0352
+     */
+    public static double hoodPitch(double d) {
+        double p = ((2.8694125875e-08 * d - 1.2812102664e-05) * d - 1.4226868243e-03) * d + 1.0352425960;
+        return Math.max(0.0, Math.min(1.0, p));
+    }
 }

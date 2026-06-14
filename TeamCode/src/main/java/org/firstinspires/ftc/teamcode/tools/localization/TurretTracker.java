@@ -77,10 +77,14 @@ public class TurretTracker {
             shooter.setTurretPower(0);
             return;
         }
-        double power = Range.clip(
-                tx * LocalizationConfig.TURRET_TRACK_P_GAIN,
+        if (Math.abs(tx) <= LocalizationConfig.TURRET_TRACK_DEADBAND_DEG) {
+            shooter.setTurretPower(0);
+            return;
+        }
+        double raw = Range.clip(tx * LocalizationConfig.TURRET_TRACK_P_GAIN,
                 -LocalizationConfig.TURRET_TRACK_MAX_POWER,
                 LocalizationConfig.TURRET_TRACK_MAX_POWER);
+        double power = Math.signum(raw) * Math.max(Math.abs(raw), LocalizationConfig.TURRET_TRACK_MIN_POWER);
         shooter.setTurretPower(power);
     }
 
@@ -90,7 +94,7 @@ public class TurretTracker {
 
     /** Horizontal offset (deg) of the requested tag from camera center, or null. */
     private static Double getTagTx(LLResult result, int tagId) {
-        if (result == null || !result.isValid()) return null;
+        if (result == null) return null;
         List<LLResultTypes.FiducialResult> fids = result.getFiducialResults();
         if (fids == null) return null;
         for (LLResultTypes.FiducialResult f : fids) {

@@ -1,6 +1,6 @@
 package org.firstinspires.ftc.teamcode.tools.localization;
 
-import com.acmerobotics.roadrunner.Pose2d;
+import com.pedropathing.geometry.Pose;
 import com.qualcomm.hardware.limelightvision.LLResult;
 import com.qualcomm.hardware.limelightvision.LLResultTypes;
 
@@ -38,7 +38,7 @@ public class AprilTagLocalizer {
         public double distanceIn = 0;            // planar camera->tag distance (in)
         public double txDeg = 0;                 // tag horizontal offset in camera (deg)
         public double bearingRobotDeg = 0;       // tag bearing in robot frame (deg)
-        public Pose2d correctedPose = null;      // estimated robot field pose (null if untrusted)
+        public Pose correctedPose = null;         // estimated robot field pose (null if untrusted)
     }
 
     /**
@@ -112,12 +112,12 @@ public class AprilTagLocalizer {
         // Step 6: solve for the robot's field position. Heading from IMU.
         double robotFieldX = tagFieldX - fieldVecX;
         double robotFieldY = tagFieldY - fieldVecY;
-        obs.correctedPose = new Pose2d(robotFieldX, robotFieldY, headingRad);
+        obs.correctedPose = new Pose(robotFieldX, robotFieldY, headingRad);
         return obs;
     }
 
     private static LLResultTypes.FiducialResult findTag(LLResult result, int tagId) {
-        if (result == null || !result.isValid()) return null;
+        if (result == null) return null;
         List<LLResultTypes.FiducialResult> fids = result.getFiducialResults();
         if (fids == null) return null;
         for (LLResultTypes.FiducialResult f : fids) {

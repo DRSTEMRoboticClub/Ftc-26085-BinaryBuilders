@@ -22,8 +22,8 @@ public class AutoBlueLeft extends LinearOpMode {
 
         waitForStart();
 
-        runner.follow(scorePath);
-        
+        runner.followPath(scorePath);
+
         while (opModeIsActive() && runner.isBusy()) {
             runner.update();
             // Parallel: Spin up shooter while driving
@@ -34,7 +34,7 @@ public class AutoBlueLeft extends LinearOpMode {
         shooter.setStopperPosition(1.0);
         sleep(500);
         shooter.setShooterVelocityRpm(0);
-        
+
         shooter.stopLimelight();
     }
 }

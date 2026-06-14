@@ -23,6 +23,7 @@ public class ShooterSubsystem extends SubsystemBase {
 
     private boolean autoAimEnabled = true;
     private double targetShooterRpm = 0.0;
+    private double lastTurretPower = 0.0;
 
     // Custom flywheel PID state
     private double pidIntegral = 0.0;
@@ -121,18 +122,55 @@ public class ShooterSubsystem extends SubsystemBase {
         autoAimEnabled = !autoAimEnabled;
     }
 
+    public boolean isAutoAimEnabled() {
+        return autoAimEnabled;
+    }
+
+    public double getLastTurretPower() {
+        return lastTurretPower;
+    }
+
+    /** TX (horizontal offset, degrees) of the tracked tag from camera centre. Null if not seen. */
+    public Double getTrackedTagTx() {
+        if (limelight == null) return null;
+        LLResult result = limelight.getLatestResult();
+        if (result == null) return null;
+        return getTrackedTagTx(result, ShooterConfig.TRACKED_TAG_ID);
+    }
+
+    /** Comma-separated list of all AprilTag IDs currently visible to the Limelight. */
+    public String getVisibleTagIds() {
+        if (limelight == null) return "no limelight";
+        LLResult result = limelight.getLatestResult();
+        if (result == null) return "no result";
+        List<LLResultTypes.FiducialResult> fids = result.getFiducialResults();
+        if (fids == null || fids.isEmpty()) return "none";
+        StringBuilder sb = new StringBuilder();
+        for (LLResultTypes.FiducialResult f : fids) {
+            if (sb.length() > 0) sb.append(", ");
+            sb.append(f.getFiducialId());
+        }
+        return sb.toString();
+    }
+
     public void runTurretControl(double manualPower, boolean triggerActive) {
         double power = manualPower * ShooterConfig.TURRET_POWER_SCALE;
 
-        if (autoAimEnabled && triggerActive && limelight != null) {
+        if (autoAimEnabled && limelight != null) {
             LLResult result = limelight.getLatestResult();
-            if (result != null && result.isValid()) {
+            if (result != null) {
                 Double tx = getTrackedTagTx(result, ShooterConfig.TRACKED_TAG_ID);
                 if (tx != null) {
-                    power = Range.clip(tx * ShooterConfig.AUTO_AIM_P_GAIN, -0.7, 0.7);
+                    if (Math.abs(tx) <= ShooterConfig.AUTO_AIM_DEADBAND_DEG) {
+                        power = 0;
+                    } else {
+                        double raw = Range.clip(tx * ShooterConfig.AUTO_AIM_P_GAIN, -0.7, 0.7);
+                        power = Math.signum(raw) * Range.clip(Math.abs(raw), ShooterConfig.AUTO_AIM_MIN_POWER, 0.7);
+                    }
                 }
             }
         }
+        lastTurretPower = power;
         turretRotation.setPower(power);
     }
 
@@ -143,6 +181,10 @@ public class ShooterSubsystem extends SubsystemBase {
             if (f.getFiducialId() == tagId) return f.getTargetXDegrees();
         }
         return null;
+    }
+
+    public void switchPipeline(int pipeline) {
+        if (limelight != null) limelight.pipelineSwitch(pipeline);
     }
 
     public void stopLimelight() {

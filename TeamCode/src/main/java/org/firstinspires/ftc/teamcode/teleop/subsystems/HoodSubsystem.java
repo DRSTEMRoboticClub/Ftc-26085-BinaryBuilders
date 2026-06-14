@@ -16,7 +16,11 @@ public class HoodSubsystem extends SubsystemBase {
     }
 
     public void adjustPosition(double delta) {
-        position = Range.clip(position + delta, HoodConfig.HOOD_MIN, HoodConfig.HOOD_MAX);
+        setPosition(position + delta);
+    }
+
+    public void setPosition(double target) {
+        position = Range.clip(target, HoodConfig.HOOD_MIN, HoodConfig.HOOD_MAX);
         hood.setPosition(position);
     }
 

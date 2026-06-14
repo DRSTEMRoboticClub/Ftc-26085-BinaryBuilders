@@ -2,6 +2,7 @@ package org.firstinspires.ftc.teamcode.teleop;
 
 import com.acmerobotics.roadrunner.Pose2d;
 import com.arcrobotics.ftclib.command.CommandOpMode;
+import com.pedropathing.geometry.Pose;
 import com.arcrobotics.ftclib.gamepad.GamepadEx;
 import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.hardware.VoltageSensor;
@@ -56,7 +57,7 @@ public abstract class LocalSysBase extends CommandOpMode {
     private TurretTracker turretTracker;
 
     // Diagnostics snapshots for telemetry.
-    private Pose2d lastCorrectedPose = null;
+    private Pose lastCorrectedPose = null;
     private double poseErrorIn = 0;
     private AprilTagLocalizer.Observation lastObs = new AprilTagLocalizer.Observation();
 
@@ -142,18 +143,33 @@ public abstract class LocalSysBase extends CommandOpMode {
 
         if (obs.correctedPose == null) return; // no trusted tag this frame
 
+        // obs.correctedPose is Pedro's Pose; localizer uses Road Runner's Pose2d.
         Pose2d rr = localizer.getPose();
         lastCorrectedPose = obs.correctedPose;
         poseErrorIn = Math.hypot(
-                rr.position.x - obs.correctedPose.position.x,
-                rr.position.y - obs.correctedPose.position.y);
+                rr.position.x - obs.correctedPose.getX(),
+                rr.position.y - obs.correctedPose.getY());
 
         // Low-pass blend RR toward the tag estimate to reject jitter.
-        double a = LocalizationConfig.TAG_CORRECTION_ALPHA;
-        double fusedX = rr.position.x + a * (obs.correctedPose.position.x - rr.position.x);
-        double fusedY = rr.position.y + a * (obs.correctedPose.position.y - rr.position.y);
-        // Keep heading from the IMU-backed RR estimate.
+        double alpha = LocalizationConfig.TAG_CORRECTION_ALPHA;
+        double fusedX = rr.position.x + alpha * (obs.correctedPose.getX() - rr.position.x);
+        double fusedY = rr.position.y + alpha * (obs.correctedPose.getY() - rr.position.y);
         localizer.setPose(new Pose2d(fusedX, fusedY, rr.heading.toDouble()));
+
+        // Distance-based compensation using calibrated cubic polynomials.
+        // distanceIn (inches) → cm for the polynomial inputs.
+        if (ShooterConfig.USE_DISTANCE_COMPENSATION
+                && shooter.isAutoAimEnabled()
+                && obs.distanceIn > 0) {
+            double distCm = obs.distanceIn * 2.54;
+            // Hood always tracks: instant servo response gives realtime visual feedback.
+            hood.setPosition(ShooterConfig.hoodPitch(distCm));
+            // Flywheel only overrides when the driver has already commanded it (trigger held
+            // or hold mode on) — avoids spinning up unnecessarily while driving around.
+            if (shooter.getTargetShooterRpm() > 0) {
+                shooter.setShooterVelocityRpm(ShooterConfig.hoodTuneAngle(distCm));
+            }
+        }
     }
 
     private void renderTelemetry(double voltage, long loopTime) {
@@ -172,21 +188,38 @@ public abstract class LocalSysBase extends CommandOpMode {
         telemetry.addLine("=== APRILTAG ===");
         telemetry.addData("Detected ID", lastObs.tagId);
         telemetry.addData("Visible", lastObs.visible);
-        telemetry.addData("Distance", "%.1f in", lastObs.distanceIn);
+        telemetry.addData("Distance", "%.1f cm  (%.1f in)",
+                lastObs.distanceIn * 2.54, lastObs.distanceIn);
         telemetry.addData("Yaw (tx)", "%.1f°", lastObs.txDeg);
         telemetry.addData("Bearing (robot)", "%.1f°", lastObs.bearingRobotDeg);
+        telemetry.addData("Turret Pwr", "%.3f", shooter.getLastTurretPower());
 
         telemetry.addLine("=== LOCALIZATION DIAGNOSTICS ===");
         telemetry.addData("RR Pose", "(%.1f, %.1f, %.1f°)",
                 localizer.getXInches(), localizer.getYInches(), localizer.getHeadingDegrees());
         if (lastCorrectedPose != null) {
             telemetry.addData("Tag Corrected Pose", "(%.1f, %.1f, %.1f°)",
-                    lastCorrectedPose.position.x, lastCorrectedPose.position.y,
-                    Math.toDegrees(lastCorrectedPose.heading.toDouble()));
+                    lastCorrectedPose.getX(), lastCorrectedPose.getY(),
+                    Math.toDegrees(lastCorrectedPose.getHeading()));
         } else {
             telemetry.addData("Tag Corrected Pose", "-- no fix yet --");
         }
         telemetry.addData("Pose Error", "%.1f in", poseErrorIn);
+
+        telemetry.addLine("=== DISTANCE COMPENSATION ===");
+        if (lastObs.distanceIn > 0) {
+            double distCm = lastObs.distanceIn * 2.54;
+            telemetry.addData("Distance",    "%.1f cm  (%.1f in)", distCm, lastObs.distanceIn);
+            telemetry.addData("Poly RPM",    "%.0f RPM", ShooterConfig.hoodTuneAngle(distCm));
+            telemetry.addData("Poly Hood",   "%.3f", ShooterConfig.hoodPitch(distCm));
+            telemetry.addData("Actual Hood", "%.3f", hood.getPosition());
+            telemetry.addData("Mode", ShooterConfig.USE_DISTANCE_COMPENSATION
+                    ? (shooter.isAutoAimEnabled() ? "ACTIVE" : "disabled (auto-aim off)")
+                    : "OFF (toggle USE_DISTANCE_COMPENSATION)");
+        } else {
+            telemetry.addData("Distance", "-- no tag --");
+            telemetry.addData("Mode", ShooterConfig.USE_DISTANCE_COMPENSATION ? "waiting for tag" : "OFF");
+        }
 
         telemetry.addLine("=== HEALTH ===");
         String voltStatus = (voltage < 11.0) ? "!! BROWNOUT RISK !!" : (voltage < 12.0) ? "! LOW !" : "OK";
