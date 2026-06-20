@@ -9,7 +9,7 @@ import com.acmerobotics.dashboard.config.Config;
  * camera mounting, alliance tag IDs / field positions) lives here so the Blue
  * and Red OpModes stay identical and only swap a handful of values.
  *
- * Units: inches for distance, degrees for angles on telemetry / config,
+ * Units: centimetres for distance, degrees for angles on telemetry / config,
  * radians internally inside the Road Runner localizer.
  */
 @Config
@@ -20,14 +20,17 @@ public class LocalizationConfig {
     // ============================================================
 
     /**
-     * Inches travelled at the wheel per encoder tick.
-     * = (wheel circumference) / (ticks per motor rev * gear ratio).
-     * MUST be calibrated by pushing the robot a known distance.
+     * Centimetres travelled at the wheel per encoder tick — used by Road Runner
+     * MecanumLocalizer (which correctly averages all 4 encoders).
+     * Theoretical: wheel_circumference_cm / CPR.  Calibrate by pushing the robot a
+     * known distance and scaling until the reading matches.
+     * Note: Pedro uses its own separate constant in PedroConstants because Pedro's
+     * drive-encoder localizer sums (rather than averages) the 4 wheel encoders.
      */
-    public static double WHEEL_IN_PER_TICK = 0.0227;
+    public static double WHEEL_IN_PER_TICK = 0.0577;  // cm/tick  (0.0227 in/tick * 2.54)
 
-    /** Distance between left and right wheel contact points (inches). */
-    public static double TRACK_WIDTH = 13.5;
+    /** Distance between left and right wheel contact points (cm). */
+    public static double TRACK_WIDTH = 34.3;  // cm  (13.5 in * 2.54)
 
     /**
      * Strafe (lateral) compensation. Mecanum wheels slip sideways, so measured
@@ -69,20 +72,52 @@ public class LocalizationConfig {
     /** Hysteresis (deg) below TURRET_FLIP_ANGLE before resuming normal tracking. */
     public static double TURRET_FLIP_HYSTERESIS = 20.0;
 
-    /** Proportional gain for centering the tag (power per degree of tx). */
-    public static double TURRET_TRACK_P_GAIN = 0.05;
+    /**
+     * Horizontal half-FOV of the Limelight 3A (degrees).
+     * Used to normalise tx to [-1, +1] so the P/D gains are independent of camera model.
+     * Limelight 3A spec: ~59.6° full horizontal FOV → 29.8° half.
+     */
+    public static double CAMERA_HALF_FOV_DEG = 29.8;
+
+    /**
+     * Proportional gain for tag centering, in normalised-offset space.
+     * A normalised offset of 1.0 means the tag is at the edge of the camera view.
+     * Power at edge = P_GAIN (before MIN_POWER floor and MAX_POWER clip).
+     * Equivalent to 0.025 power-per-degree in raw degree space (0.025 * 29.8 ≈ 0.745).
+     */
+    public static double TURRET_TRACK_P_GAIN = 0.7;
+
+    /**
+     * Derivative gain in normalised-offset space.
+     * Dampens oscillation: as the turret approaches centre, the normalised offset shrinks
+     * (negative dNorm), which subtracts from the P term and slows the motor before it
+     * overshoots the deadband.
+     * Equivalent to 0.02 power-per-degree-per-loop (0.02 * 29.8 ≈ 0.6).
+     */
+    public static double TURRET_TRACK_D_GAIN = 0.6;
+
+    // Flip to +1.0 if TurretTracker moves toward the tag; -1.0 if away (tunable from Dashboard)
+    public static double TURRET_TRACK_DIRECTION_SIGN = -1.0;
 
     /** Stop correcting when tag is within this many degrees of centre (prevents hunting). */
-    public static double TURRET_TRACK_DEADBAND_DEG = 1.5;
+    public static double TURRET_TRACK_DEADBAND_DEG = 2.5;
 
-    /** Floor power to overcome BRAKE-mode stiction on the turret motor. */
-    public static double TURRET_TRACK_MIN_POWER = 0.15;
+    /**
+     * Floor power to overcome BRAKE-mode stiction on the turret motor.
+     * Reduced from 0.15 — with PD control, the D term handles the final approach;
+     * a large floor is what caused the step-discontinuity oscillation.
+     */
+    public static double TURRET_TRACK_MIN_POWER = 0.08;
 
     /** Max |power| the auto turret tracker will command. */
     public static double TURRET_TRACK_MAX_POWER = 0.6;
 
-    /** Power used while unwinding the turret during a flip. */
-    public static double TURRET_UNWIND_POWER = 0.5;
+    /**
+     * Power used during a full-rotation flip.
+     * Higher than the old "unwind" power because the flip now travels ~340° (from
+     * ±FLIP_ANGLE all the way through 0° to the safe zone on the other side).
+     */
+    public static double TURRET_UNWIND_POWER = 0.7;
 
     // ============================================================
     // CAMERA / TURRET MOUNTING OFFSETS (robot frame, inches)
@@ -97,7 +132,7 @@ public class LocalizationConfig {
      * Limelight lens offset from the turret pivot, measured when the turret is
      * at its zero (forward) position. Rotated by the live turret angle at runtime.
      */
-    public static double CAMERA_OFFSET_X = 4.0;
+    public static double CAMERA_OFFSET_X = 10.2;   // cm  (4.0 in * 2.54)
     public static double CAMERA_OFFSET_Y = 0.0;
 
     /**
@@ -113,8 +148,8 @@ public class LocalizationConfig {
     public static int APRILTAG_PIPELINE = 0;
     public static double TAG_SIZE_IN = 6.5;
 
-    /** Max accepted planar distance (in) for a tag correction to be trusted. */
-    public static double TAG_MAX_TRUST_DISTANCE = 120.0;
+    /** Max accepted planar distance (cm) for a tag correction to be trusted. */
+    public static double TAG_MAX_TRUST_DISTANCE = 305.0;  // cm  (120 in * 2.54)
 
     /** Low-pass blend factor when fusing a tag correction into the RR pose
      *  (0 = ignore tag, 1 = snap fully to tag). */
@@ -123,12 +158,12 @@ public class LocalizationConfig {
     // ------- Alliance-specific values (overridden per OpMode) -------
     // Defaults here are the BLUE values; LocalSysRed passes its own.
 
-    /** Field position (inches) and the IDs are set per alliance in the OpMode. */
+    /** Field position (cm) and the IDs are set per alliance in the OpMode. */
     public static double BLUE_TAG_FIELD_X = 0.0;
-    public static double BLUE_TAG_FIELD_Y = 60.0;
+    public static double BLUE_TAG_FIELD_Y = 152.4;   // cm  (60 in * 2.54)
     public static int BLUE_TAG_ID = 20;
 
     public static double RED_TAG_FIELD_X = 0.0;
-    public static double RED_TAG_FIELD_Y = -60.0;
+    public static double RED_TAG_FIELD_Y = -152.4;   // cm  (-60 in * 2.54)
     public static int RED_TAG_ID = 24;
 }

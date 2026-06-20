@@ -13,7 +13,7 @@ public class TestPedroMove extends AutoBase {
 
     @Override
     protected Pose startPose() {
-        return new Pose(53.000, 88.000, Math.toRadians(180));
+        return new Pose(21.000, 119.000, Math.toRadians(180));
     }
 
     @Override
@@ -27,6 +27,13 @@ public class TestPedroMove extends AutoBase {
 
         public Paths(Follower follower) {
             BlueTop = follower.pathBuilder()
+                    .addPath(
+                            new BezierLine(
+                                    new Pose(21.000, 119.000),
+                                    new Pose(53.000, 88.000)
+                            )
+                    )
+                    .setConstantHeadingInterpolation(Math.toRadians(180))
                     .addPath(
                             new BezierLine(
                                     new Pose(53.000, 88.000),

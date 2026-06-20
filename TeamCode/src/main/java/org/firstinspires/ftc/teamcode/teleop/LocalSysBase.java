@@ -9,6 +9,7 @@ import com.qualcomm.robotcore.hardware.VoltageSensor;
 
 import org.firstinspires.ftc.teamcode.configs.LocalizationConfig;
 import org.firstinspires.ftc.teamcode.configs.ShooterConfig;
+import org.firstinspires.ftc.teamcode.configs.ShootZoneConfig;
 import org.firstinspires.ftc.teamcode.teleop.subsystems.*;
 import org.firstinspires.ftc.teamcode.tools.PriorityInputHandler;
 import org.firstinspires.ftc.teamcode.tools.localization.AprilTagLocalizer;
@@ -60,6 +61,15 @@ public abstract class LocalSysBase extends CommandOpMode {
     private Pose lastCorrectedPose = null;
     private double poseErrorIn = 0;
     private AprilTagLocalizer.Observation lastObs = new AprilTagLocalizer.Observation();
+    private double lastCompDistCm = 0;
+    private boolean lastCompFromTag = false;
+
+    // ── Auto-shoot zone state ─────────────────────────────────────────────
+    private boolean autoShootActive    = false;
+    private boolean prevL3             = false;
+    private boolean stopperCurrentOpen = false;
+    private long    stopperToggledMs   = 0;
+    private double  autoShootTargetRpm = 0.0; // cached for telemetry + RPM check
 
     @Override
     public void initialize() {
@@ -80,12 +90,15 @@ public abstract class LocalSysBase extends CommandOpMode {
             hub.visuallyIdentify(false);
         }
 
-        // Localization shares the drive's already-initialized IMU.
-        localizer = new MecanumLocalizer(hardwareMap, drive.getImu());
+        localizer = new MecanumLocalizer(hardwareMap);
         turretTracker = new TurretTracker(shooter);
 
         // Make sure this OpMode tracks ITS alliance tag everywhere it matters.
         ShooterConfig.TRACKED_TAG_ID = getTagId();
+
+        // TurretTracker is the sole auto-aim authority here — prevent runTurretControl()
+        // from also driving the turret and issuing conflicting motor commands.
+        shooter.setExternalTurretControl(true);
 
         PanelsFieldDrawer.init();
     }
@@ -99,20 +112,47 @@ public abstract class LocalSysBase extends CommandOpMode {
             for (LynxModule hub : allHubs) {
                 hub.clearBulkCache();
             }
+            // Fetch Limelight result once — all downstream methods use this cached copy.
+            shooter.cacheLimelightResult();
 
             long currentTime = System.currentTimeMillis();
             long loopTime = (lastLoopTime == 0) ? 0 : currentTime - lastLoopTime;
             lastLoopTime = currentTime;
 
-            // 1) Standard TeleOpBlue control (unchanged behaviour).
+            // 1a) Auto-shoot: set RPM override BEFORE inputHandler so the PID in
+            //     inputHandler.update() already sees the correct target this frame.
+            autoShootPreUpdate();
+
+            // 1b) Standard TeleOpBlue control (drive / intake / hood / turret / PID).
             inputHandler.update(drive, intake, shooter, hood);
 
-            // 2) Localization subsystems (each kept in its own helper).
-            localizer.update();
-            turretTracker.update(shooter, getTagId());   // overrides turret for auto-track
-            applyAprilTagCorrection();
+            // 2) Localization subsystems.
+            // Pass DriveSubsystem's cached heading — avoids a second I2C IMU read
+            // and ensures the localizer + limelight MegaTag2 use the same heading.
+            double headingDeg = drive.getHeading();
+            localizer.update(headingDeg);
+            shooter.updateLimelightOrientation(headingDeg);
+            // TurretTracker only runs in auto-aim mode.
+            // In manual mode (G1 X), D-pad from runTurretControl() has sole control.
+            if (shooter.isAutoAimEnabled()) {
+                try {
+                    turretTracker.update(shooter, getTagId());
+                } catch (Exception e) {
+                    // Ignore bad frames — turret holds last power
+                }
+            }
+            try {
+                applyAprilTagCorrection();   // updates lastObs for this frame
+            } catch (Exception e) {
+                // Ignore malformed Limelight pose data rather than crashing
+            }
 
-            // 3) Field visualisation — draw robot position on Panels field view.
+            // 1c) Auto-shoot stopper — runs AFTER inputHandler so we override its
+            //     stopper setting, and AFTER applyAprilTagCorrection for fresh distance.
+            autoShootStopper();
+
+            // 3) Field visualisation — non-blocking, PanelsFieldDrawer handles rate-limiting
+            //    and network I/O on its own daemon thread.
             PanelsFieldDrawer.update(localizer.getXInches(), localizer.getYInches(),
                     Math.toRadians(localizer.getHeadingDegrees()));
 
@@ -141,90 +181,193 @@ public abstract class LocalSysBase extends CommandOpMode {
                 getTagFieldX(), getTagFieldY());
         lastObs = obs;
 
-        if (obs.correctedPose == null) return; // no trusted tag this frame
+        // ── Pose correction: only when we have a trusted tag measurement ────
+        if (obs.correctedPose != null) {
+            Pose2d rr = localizer.getPose();
+            lastCorrectedPose = obs.correctedPose;
+            poseErrorIn = Math.hypot(
+                    rr.position.x - obs.correctedPose.getX(),
+                    rr.position.y - obs.correctedPose.getY());
 
-        // obs.correctedPose is Pedro's Pose; localizer uses Road Runner's Pose2d.
-        Pose2d rr = localizer.getPose();
-        lastCorrectedPose = obs.correctedPose;
-        poseErrorIn = Math.hypot(
-                rr.position.x - obs.correctedPose.getX(),
-                rr.position.y - obs.correctedPose.getY());
+            double alpha = LocalizationConfig.TAG_CORRECTION_ALPHA;
+            double fusedX = rr.position.x + alpha * (obs.correctedPose.getX() - rr.position.x);
+            double fusedY = rr.position.y + alpha * (obs.correctedPose.getY() - rr.position.y);
+            localizer.setPose(new Pose2d(fusedX, fusedY, rr.heading.toDouble()));
+        }
 
-        // Low-pass blend RR toward the tag estimate to reject jitter.
-        double alpha = LocalizationConfig.TAG_CORRECTION_ALPHA;
-        double fusedX = rr.position.x + alpha * (obs.correctedPose.getX() - rr.position.x);
-        double fusedY = rr.position.y + alpha * (obs.correctedPose.getY() - rr.position.y);
-        localizer.setPose(new Pose2d(fusedX, fusedY, rr.heading.toDouble()));
+        // ── Distance compensation: tag distance first, localizer pose as fallback ──
+        // The localizer fallback lets the polynomial keep running even when the
+        // Limelight temporarily loses the tag (e.g. turret mid-swing, occlusion).
+        if (ShooterConfig.USE_DISTANCE_COMPENSATION && shooter.isAutoAimEnabled()) {
+            double distCm;
+            if (obs.distanceIn > 0) {
+                distCm = obs.distanceIn;        // live AprilTag measurement (cm)
+                lastCompFromTag = true;
+            } else {
+                // Dead-reckoning fallback: distance from current pose to known tag position.
+                // Both localizer and tag field positions share the same cm coordinate frame.
+                distCm = Math.hypot(localizer.getXInches() - getTagFieldX(),
+                                    localizer.getYInches() - getTagFieldY());
+                lastCompFromTag = false;
+            }
+            // Clamp to calibration range — outside [MIN,MAX] the polynomial extrapolates badly.
+            distCm = Math.max(ShooterConfig.MIN_COMP_DISTANCE,
+                              Math.min(distCm, ShooterConfig.MAX_COMP_DISTANCE));
+            lastCompDistCm = distCm;
 
-        // Distance-based compensation using calibrated cubic polynomials.
-        // distanceIn (inches) → cm for the polynomial inputs.
-        if (ShooterConfig.USE_DISTANCE_COMPENSATION
-                && shooter.isAutoAimEnabled()
-                && obs.distanceIn > 0) {
-            double distCm = obs.distanceIn * 2.54;
-            // Hood always tracks: instant servo response gives realtime visual feedback.
             hood.setPosition(ShooterConfig.hoodPitch(distCm));
-            // Flywheel only overrides when the driver has already commanded it (trigger held
-            // or hold mode on) — avoids spinning up unnecessarily while driving around.
             if (shooter.getTargetShooterRpm() > 0) {
                 shooter.setShooterVelocityRpm(ShooterConfig.hoodTuneAngle(distCm));
             }
         }
     }
 
+    // ── Auto-shoot helpers ────────────────────────────────────────────────────
+
+    /**
+     * Call BEFORE inputHandler.update() so the RPM override is visible to the
+     * updatePID() call that runs inside inputHandler.
+     */
+    private void autoShootPreUpdate() {
+        boolean l3 = gamepad1.left_stick_button;
+        if (l3 && !prevL3) {
+            autoShootActive = !autoShootActive;
+            if (!autoShootActive) {
+                shooter.clearAutoShootRpmOverride();
+                autoShootTargetRpm = 0.0;
+            }
+        }
+        prevL3 = l3;
+
+        if (!autoShootActive) return;
+
+        // Tag distance first; localizer dead-reckoning as fallback when tag not visible.
+        if (ShooterConfig.USE_DISTANCE_COMPENSATION) {
+            double distCm = (lastObs.distanceIn > 0)
+                    ? lastObs.distanceIn
+                    : Math.hypot(localizer.getXInches() - getTagFieldX(),
+                                 localizer.getYInches() - getTagFieldY());
+            distCm = Math.max(ShooterConfig.MIN_COMP_DISTANCE,
+                              Math.min(distCm, ShooterConfig.MAX_COMP_DISTANCE));
+            autoShootTargetRpm = ShooterConfig.hoodTuneAngle(distCm);
+        } else {
+            autoShootTargetRpm = ShooterConfig.MANUAL_TARGET_RPM;
+        }
+        shooter.setAutoShootRpmOverride(autoShootTargetRpm);
+    }
+
+    /**
+     * Call AFTER inputHandler.update() and applyAprilTagCorrection().
+     * Cycles the stopper open/close when in a shooting zone and RPM is on target.
+     */
+    private void autoShootStopper() {
+        if (!autoShootActive) {
+            if (stopperCurrentOpen) {
+                shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
+                stopperCurrentOpen = false;
+            }
+            return;
+        }
+
+        if (!isInShootingZone() || !isShooterReadyForAutoShoot()) {
+            if (stopperCurrentOpen) {
+                shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
+                stopperCurrentOpen = false;
+                stopperToggledMs = System.currentTimeMillis();
+            }
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        long elapsed = now - stopperToggledMs;
+
+        if (stopperCurrentOpen) {
+            if (elapsed >= ShootZoneConfig.STOPPER_OPEN_MS) {
+                shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
+                stopperCurrentOpen = false;
+                stopperToggledMs = now;
+            }
+        } else {
+            if (elapsed >= ShootZoneConfig.STOPPER_CLOSE_MS) {
+                shooter.setStopperPosition(ShooterConfig.STOPPER_OPEN);
+                stopperCurrentOpen = true;
+                stopperToggledMs = now;
+            }
+        }
+    }
+
+    private boolean isInShootingZone() {
+        double x = localizer.getXInches();
+        double y = localizer.getYInches();
+        boolean z1 = x >= ShootZoneConfig.ZONE1_X_MIN && x <= ShootZoneConfig.ZONE1_X_MAX
+                && y >= ShootZoneConfig.ZONE1_Y_MIN && y <= ShootZoneConfig.ZONE1_Y_MAX;
+        boolean z2 = x >= ShootZoneConfig.ZONE2_X_MIN && x <= ShootZoneConfig.ZONE2_X_MAX
+                && y >= ShootZoneConfig.ZONE2_Y_MIN && y <= ShootZoneConfig.ZONE2_Y_MAX;
+        return z1 || z2;
+    }
+
+    private boolean isShooterReadyForAutoShoot() {
+        if (autoShootTargetRpm <= 0) return false;
+        return Math.abs(shooter.getShooterVelocityRpm() - autoShootTargetRpm)
+                <= ShootZoneConfig.SHOOT_READY_RPM_TOLERANCE;
+    }
+
     private void renderTelemetry(double voltage, long loopTime) {
-        telemetry.addData("Alliance", "%s  (tracking tag %d, 36h11)", getAllianceName(), getTagId());
+        // ── Header: always-visible summary ───────────────────────────────────
+        String voltWarn = voltage < 11.0 ? " !!LOW!!" : voltage < 12.0 ? " !LOW!" : "";
+        telemetry.addLine(String.format("%-5s | tag %d | aim %-3s | %dms | %.2fV%s",
+                getAllianceName(), getTagId(),
+                shooter.isAutoAimEnabled() ? "ON" : "OFF",
+                loopTime, voltage, voltWarn));
 
-        telemetry.addLine("=== ROAD RUNNER POSE ===");
-        telemetry.addData("X", "%.1f", localizer.getXInches());
-        telemetry.addData("Y", "%.1f", localizer.getYInches());
-        telemetry.addData("Heading", "%.1f°", localizer.getHeadingDegrees());
-
-        telemetry.addLine("=== TURRET ===");
-        telemetry.addData("Encoder", shooter.getTurretTicks());
-        telemetry.addData("Angle", "%.1f°", turretTracker.getLastTurretAngleDegrees());
-        telemetry.addData("State", turretTracker.isUnwinding() ? "UNWINDING (cable limit)" : "TRACKING");
-
-        telemetry.addLine("=== APRILTAG ===");
-        telemetry.addData("Detected ID", lastObs.tagId);
-        telemetry.addData("Visible", lastObs.visible);
-        telemetry.addData("Distance", "%.1f cm  (%.1f in)",
-                lastObs.distanceIn * 2.54, lastObs.distanceIn);
-        telemetry.addData("Yaw (tx)", "%.1f°", lastObs.txDeg);
-        telemetry.addData("Bearing (robot)", "%.1f°", lastObs.bearingRobotDeg);
-        telemetry.addData("Turret Pwr", "%.3f", shooter.getLastTurretPower());
-
-        telemetry.addLine("=== LOCALIZATION DIAGNOSTICS ===");
-        telemetry.addData("RR Pose", "(%.1f, %.1f, %.1f°)",
-                localizer.getXInches(), localizer.getYInches(), localizer.getHeadingDegrees());
+        // ── Pose ─────────────────────────────────────────────────────────────
+        telemetry.addLine(String.format("Pose  X:%.1f  Y:%.1f  H:%.1f°",
+                localizer.getXInches(), localizer.getYInches(), localizer.getHeadingDegrees()));
         if (lastCorrectedPose != null) {
-            telemetry.addData("Tag Corrected Pose", "(%.1f, %.1f, %.1f°)",
-                    lastCorrectedPose.getX(), lastCorrectedPose.getY(),
-                    Math.toDegrees(lastCorrectedPose.getHeading()));
+            telemetry.addLine(String.format("Fix   (%.1f, %.1f)  err %.1f cm",
+                    lastCorrectedPose.getX(), lastCorrectedPose.getY(), poseErrorIn));
         } else {
-            telemetry.addData("Tag Corrected Pose", "-- no fix yet --");
-        }
-        telemetry.addData("Pose Error", "%.1f in", poseErrorIn);
-
-        telemetry.addLine("=== DISTANCE COMPENSATION ===");
-        if (lastObs.distanceIn > 0) {
-            double distCm = lastObs.distanceIn * 2.54;
-            telemetry.addData("Distance",    "%.1f cm  (%.1f in)", distCm, lastObs.distanceIn);
-            telemetry.addData("Poly RPM",    "%.0f RPM", ShooterConfig.hoodTuneAngle(distCm));
-            telemetry.addData("Poly Hood",   "%.3f", ShooterConfig.hoodPitch(distCm));
-            telemetry.addData("Actual Hood", "%.3f", hood.getPosition());
-            telemetry.addData("Mode", ShooterConfig.USE_DISTANCE_COMPENSATION
-                    ? (shooter.isAutoAimEnabled() ? "ACTIVE" : "disabled (auto-aim off)")
-                    : "OFF (toggle USE_DISTANCE_COMPENSATION)");
-        } else {
-            telemetry.addData("Distance", "-- no tag --");
-            telemetry.addData("Mode", ShooterConfig.USE_DISTANCE_COMPENSATION ? "waiting for tag" : "OFF");
+            telemetry.addLine("Fix   -- no AprilTag fix yet --");
         }
 
-        telemetry.addLine("=== HEALTH ===");
-        String voltStatus = (voltage < 11.0) ? "!! BROWNOUT RISK !!" : (voltage < 12.0) ? "! LOW !" : "OK";
-        String loopStatus = (loopTime > 45) ? "!! HIGH LATENCY !!" : "OK";
-        telemetry.addData("Battery", "%.2fV [%s]", voltage, voltStatus);
-        telemetry.addData("Loop Time", "%d ms [%s]", loopTime, loopStatus);
+        // ── Turret ───────────────────────────────────────────────────────────
+        telemetry.addLine(String.format("Turret  %.1f°  %-8s  pwr %.2f",
+                turretTracker.getLastTurretAngleDegrees(),
+                turretTracker.isUnwinding() ? "FLIPPING" : "tracking",
+                shooter.getLastTurretPower()));
+
+        // ── Limelight: distance + aim offset ─────────────────────────────────
+        if (lastObs.visible) {
+            // Show normalised offset so you can see how the proportional tracking scales:
+            // 0% = tag perfectly centred in camera; 100% = tag at edge of FOV.
+            double normPct = Math.abs(lastObs.txDeg) / LocalizationConfig.CAMERA_HALF_FOV_DEG * 100.0;
+            telemetry.addLine(String.format("LL  TAG SEEN  tx %.1f° (%.0f%%)  dist %.0f cm",
+                    lastObs.txDeg, normPct, lastObs.distanceIn));
+        } else {
+            telemetry.addLine("LL  no tag");
+        }
+
+        // ── Shooter polynomial (the main display the user requested) ─────────
+        if (ShooterConfig.USE_DISTANCE_COMPENSATION && shooter.isAutoAimEnabled()) {
+            String src = lastCompFromTag ? "tag" : "DR";  // DR = dead-reckoning
+            double polyRpm  = ShooterConfig.hoodTuneAngle(lastCompDistCm);
+            double polyHood = ShooterConfig.hoodPitch(lastCompDistCm);
+            telemetry.addLine(String.format("Dist  %.0f cm (%s)  →  %.0f RPM  hood %.2f",
+                    lastCompDistCm, src, polyRpm, polyHood));
+            telemetry.addLine(String.format("Actual  %.0f / %.0f RPM  hood %.2f",
+                    shooter.getShooterVelocityRpm(), polyRpm, hood.getPosition()));
+        } else {
+            telemetry.addLine(String.format("Shooter  %.0f RPM  hood %.2f",
+                    shooter.getShooterVelocityRpm(), hood.getPosition()));
+        }
+
+        // ── Auto-shoot ───────────────────────────────────────────────────────
+        if (autoShootActive) {
+            telemetry.addLine(String.format("AutoShoot ON  %s  stopper %s",
+                    isInShootingZone() ? "IN ZONE" : "out of zone",
+                    stopperCurrentOpen ? "OPEN" : "closed"));
+        } else {
+            telemetry.addLine("AutoShoot OFF  (G1 L3)");
+        }
     }
 }

@@ -55,11 +55,11 @@ public class PedroLocalizationTest extends LinearOpMode {
             PanelsFieldDrawer.update(follower);
 
             Pose pose = follower.getPose();
-            telemetry.addData("X (in)", "%.2f", pose.getX());
-            telemetry.addData("Y (in)", "%.2f", pose.getY());
+            telemetry.addData("X (cm)", "%.2f", pose.getX());
+            telemetry.addData("Y (cm)", "%.2f", pose.getY());
             telemetry.addData("Heading (deg)", "%.2f", Math.toDegrees(pose.getHeading()));
             telemetry.addLine("--- calibration reminders ---");
-            telemetry.addLine("Push 24\" fwd -> X~24, Y~0 | Push 24\" left -> Y~24, X~0");
+            telemetry.addLine("Push 61cm fwd -> X~61, Y~0 | Push 61cm left -> Y~61, X~0");
             telemetry.update();
         }
     }

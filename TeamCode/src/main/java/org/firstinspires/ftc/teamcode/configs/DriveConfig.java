@@ -13,10 +13,15 @@ public class DriveConfig {
     // Joystick Deadzone (0.0 to 1.0)
     public static double JOYSTICK_DEADZONE = 0.05;
 
-    // Heading PID for field-centric rotation
-    public static double HEADING_P = 0.015;
+    // Heading PID — DISABLED (0) on purpose.
+    // Aiming is done by the TURRET, not the chassis. With a non-zero P, the drive latches
+    // targetHeading the instant the driver stops turning (e.g. while aiming at a tag) and then
+    // fights the driver back to that heading — felt as the robot "drifting to the heading it saw
+    // the AprilTag". At 0, driveFieldCentric skips the heading block entirely and turn input
+    // passes through raw, so the chassis drives freely and the turret handles all aiming.
+    public static double HEADING_P = 0.0;
     public static double HEADING_I = 0.0;
-    public static double HEADING_D = 0.001;
+    public static double HEADING_D = 0.0;
 
     // Motor Velocity PID (for potential future use)
     public static double MOTOR_P = 0.001;

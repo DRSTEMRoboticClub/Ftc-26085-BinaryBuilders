@@ -35,7 +35,7 @@ public class AprilTagLocalizer {
     public static class Observation {
         public boolean visible = false;          // requested tag seen this frame
         public int tagId = -1;
-        public double distanceIn = 0;            // planar camera->tag distance (in)
+        public double distanceIn = 0;            // planar camera->tag distance (cm)
         public double txDeg = 0;                 // tag horizontal offset in camera (deg)
         public double bearingRobotDeg = 0;       // tag bearing in robot frame (deg)
         public Pose correctedPose = null;         // estimated robot field pose (null if untrusted)
@@ -65,8 +65,9 @@ public class AprilTagLocalizer {
         // Step 1-2: tag position in camera space -> planar (forward, left) inches.
         Pose3D camSpace = fid.getTargetPoseCameraSpace();
         if (camSpace == null) return obs;
-        double xRight = camSpace.getPosition().toUnit(DistanceUnit.INCH).x; // +right
-        double zFwd = camSpace.getPosition().toUnit(DistanceUnit.INCH).z;   // +forward
+        if (camSpace.getPosition() == null) return obs; // 3D solve not available this frame
+        double xRight = camSpace.getPosition().toUnit(DistanceUnit.CM).x; // +right  (cm)
+        double zFwd = camSpace.getPosition().toUnit(DistanceUnit.CM).z;   // +forward (cm)
         double camFwd = zFwd;
         double camLeft = -xRight; // camera +right -> robot-style +left is negative
         double distance = Math.hypot(camFwd, camLeft);

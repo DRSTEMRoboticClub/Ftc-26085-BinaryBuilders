@@ -40,20 +40,23 @@ public class PedroConstants {
     // ============================================================
 
     /**
-     * Inches travelled per encoder tick, forward. Seeded from the team's existing
-     * {@link LocalizationConfig#WHEEL_IN_PER_TICK}. Calibrate by pushing the robot
-     * a known distance and dividing inches / ticks.
+     * Centimetres per encoder tick — forward.
+     * Pedro's drive-encoder localizer SUMS (does not average) all 4 wheel encoders,
+     * so this value is ~1/4 of the per-wheel cm/tick figure.
+     * Calibrated from test: robot moved 24 cm, Pedro reported 37 units with
+     * the old 0.0227 in/tick constant → 0.0227 × (24/37) = 0.01472 cm/tick.
+     * Push the robot exactly one tile (61 cm) and scale until the reading is 61.
      */
-    public static double FORWARD_TICKS_TO_INCHES = LocalizationConfig.WHEEL_IN_PER_TICK;
-    /** Inches per tick sideways. Strafing slips, so this is usually a bit smaller. */
-    public static double STRAFE_TICKS_TO_INCHES = LocalizationConfig.WHEEL_IN_PER_TICK;
-    /** Inches per tick contributed to rotation. Calibrate during the turn tuner. */
-    public static double TURN_TICKS_TO_INCHES = LocalizationConfig.WHEEL_IN_PER_TICK;
+    public static double FORWARD_TICKS_TO_INCHES = 0.015460345; // cm/tick — calibrated (61cm actual, ~58cm reported)
+    /** cm per tick sideways — mecanum slip makes this less than forward. */
+    public static double STRAFE_TICKS_TO_INCHES = 0.016918868; // cm/tick — calibrated (61cm actual, 53cm reported)
+    /** cm per tick for rotation — 2× forward to correct the 180°→90° heading halving. */
+    public static double TURN_TICKS_TO_INCHES = 0.029400000;   // cm/tick — 0.0147 * 2
 
-    /** Track width (left-right wheel distance), inches. */
-    public static double ROBOT_WIDTH = LocalizationConfig.TRACK_WIDTH;
-    /** Wheelbase (front-back wheel distance), inches. */
-    public static double ROBOT_LENGTH = 13.5;
+    /** Track width (left-right wheel distance, cm). */
+    public static double ROBOT_WIDTH = LocalizationConfig.TRACK_WIDTH;  // 34.3 cm
+    /** Wheelbase (front-back wheel distance, cm). */
+    public static double ROBOT_LENGTH = 34.3;  // cm  (13.5 in * 2.54)
 
     /**
      * Per-wheel encoder direction (+1 / -1). During the localization test, push
@@ -81,10 +84,10 @@ public class PedroConstants {
     public static DcMotorSimple.Direction RIGHT_FRONT_DIR = DcMotorSimple.Direction.FORWARD;
     public static DcMotorSimple.Direction RIGHT_REAR_DIR = DcMotorSimple.Direction.FORWARD;
 
-    /** Max forward velocity (in/s) measured by Pedro's Forward Velocity Tuner. */
-    public static double X_VELOCITY = 60.0;
-    /** Max strafe velocity (in/s) measured by Pedro's Lateral Velocity Tuner. */
-    public static double Y_VELOCITY = 50.0;
+    /** Max forward velocity (cm/s) measured by Pedro's Forward Velocity Tuner. */
+    public static double X_VELOCITY = 152.4;  // cm/s  (60 in/s * 2.54)
+    /** Max strafe velocity (cm/s) measured by Pedro's Lateral Velocity Tuner. */
+    public static double Y_VELOCITY = 127.0;  // cm/s  (50 in/s * 2.54)
     /** Global cap on drive power (0..1). */
     public static double MAX_POWER = 1.0;
 

@@ -82,7 +82,7 @@ public abstract class AutoBase extends LinearOpMode {
         telemetry.addData("Heading", "%.1f deg", Math.toDegrees(p.getHeading()));
         if (PedroAutoRunner.USE_APRILTAG_CORRECTION) {
             telemetry.addData("Tag visible", runner.getLastObservation().visible);
-            telemetry.addData("Tag dist", "%.1f in", runner.getLastObservation().distanceIn);
+            telemetry.addData("Tag dist", "%.1f cm", runner.getLastObservation().distanceIn);
         }
     }
 }

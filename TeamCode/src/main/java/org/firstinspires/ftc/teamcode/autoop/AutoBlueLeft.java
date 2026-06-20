@@ -26,13 +26,17 @@ public class AutoBlueLeft extends LinearOpMode {
 
         while (opModeIsActive() && runner.isBusy()) {
             runner.update();
-            // Parallel: Spin up shooter while driving
             shooter.setShooterVelocityRpm(ShooterConfig.MANUAL_TARGET_RPM);
+            shooter.updatePID(); // must run every loop or flywheel doesn't move
         }
 
         // Fire
-        shooter.setStopperPosition(1.0);
-        sleep(500);
+        shooter.setStopperPosition(ShooterConfig.STOPPER_OPEN);
+        long fireStart = System.currentTimeMillis();
+        while (opModeIsActive() && System.currentTimeMillis() - fireStart < 500) {
+            shooter.updatePID(); // keep flywheel speed during fire
+        }
+        shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
         shooter.setShooterVelocityRpm(0);
 
         shooter.stopLimelight();

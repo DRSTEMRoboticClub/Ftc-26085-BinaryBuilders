@@ -101,9 +101,9 @@ public class PriorityInputHandler {
 
         // Drivetrain (Field Centric)
         // Left Stick: Move, Right Stick X: Turn
-        lastStrafe = -moveController.getLeftX();
+        lastStrafe  = -moveController.getLeftX();
         lastForward = -moveController.getLeftY();
-        lastTurn = -moveController.getRightX();
+        lastTurn    = -moveController.getRightX();
         drive.driveFieldCentric(lastStrafe, lastForward, lastTurn);
 
         // Shooter Logic (G1 Primary)
@@ -160,45 +160,41 @@ public class PriorityInputHandler {
             shooter.toggleAutoAim();
         }
 
-        // Hood Control (G1 D-Pad Up/Down) - Always available
-        if (g1.gamepad.dpad_up) {
+        // Toggle Limelight on/off (G2 X) — use to A/B test LL power draw causing disconnect
+        if (g2.wasJustPressed(GamepadKeys.Button.X)) {
+            shooter.toggleLimelight();
+        }
+
+        long now = System.currentTimeMillis();
+
+        // Turret auto-aim P-gain tuning — G2 D-pad Up/Down (rate-limited, same as RPM tune)
+        // Up = more aggressive tracking, Down = softer. Current value shown in telemetry.
+        if (shouldStep("g2_dpad_up", g2.gamepad.dpad_up,
+                g2.wasJustPressed(GamepadKeys.Button.DPAD_UP), now)) {
+            ShooterConfig.AUTO_AIM_P_GAIN = Math.min(2.0,
+                    ShooterConfig.AUTO_AIM_P_GAIN + ShooterConfig.AUTO_AIM_P_TUNE_STEP);
+        } else if (shouldStep("g2_dpad_down", g2.gamepad.dpad_down,
+                g2.wasJustPressed(GamepadKeys.Button.DPAD_DOWN), now)) {
+            ShooterConfig.AUTO_AIM_P_GAIN = Math.max(0.0,
+                    ShooterConfig.AUTO_AIM_P_GAIN - ShooterConfig.AUTO_AIM_P_TUNE_STEP);
+        }
+
+        // Hood pitch — G1 D-pad Up/Down (rate-limited; without shouldStep the servo
+        // would receive ~100 adjustPosition calls/sec while held, slamming to the limit)
+        if (shouldStep("g1_dpad_up", g1.gamepad.dpad_up,
+                g1.wasJustPressed(GamepadKeys.Button.DPAD_UP), now)) {
             hood.adjustPosition(-HoodConfig.HOOD_INCREMENT);
-        } else if (g1.gamepad.dpad_down) {
+        } else if (shouldStep("g1_dpad_down", g1.gamepad.dpad_down,
+                g1.wasJustPressed(GamepadKeys.Button.DPAD_DOWN), now)) {
             hood.adjustPosition(HoodConfig.HOOD_INCREMENT);
         }
 
-        // Turret Control (Only if manual is ON)
+        // Turret manual — G1 D-pad Left/Right (always active; overrides auto-aim in runTurretControl)
         double turretManual = 0;
-        if (manualMode) {
-            if (g1.gamepad.dpad_left) turretManual = -1.0;
-            else if (g1.gamepad.dpad_right) turretManual = 1.0;
-        }
+        if (g1.gamepad.dpad_left)       turretManual = -1.0;
+        else if (g1.gamepad.dpad_right) turretManual =  1.0;
         // runTurretControl handles auto-aim logic internally
         shooter.runTurretControl(turretManual, rightTriggerPower > 0.1);
-
-        // G2 tuning controls with debounced auto-repeat for accurate step changes.
-        long now = System.currentTimeMillis();
-        double rpmStep = g2.getButton(GamepadKeys.Button.RIGHT_BUMPER)
-                ? ShooterConfig.RPM_TUNE_STEP_FINE
-                : ShooterConfig.RPM_TUNE_STEP_COARSE;
-        double hoodStep = g2.getButton(GamepadKeys.Button.RIGHT_BUMPER)
-                ? HoodConfig.HOOD_FINE_INCREMENT
-                : HoodConfig.HOOD_INCREMENT;
-
-        if (shouldStep("g2_dpad_up", g2.gamepad.dpad_up, g2.wasJustPressed(GamepadKeys.Button.DPAD_UP), now)) {
-            ShooterConfig.MANUAL_TARGET_RPM = Math.min(ShooterConfig.MAX_LAUNCHER_RPM,
-                    ShooterConfig.MANUAL_TARGET_RPM + rpmStep);
-        }
-        if (shouldStep("g2_dpad_down", g2.gamepad.dpad_down, g2.wasJustPressed(GamepadKeys.Button.DPAD_DOWN), now)) {
-            ShooterConfig.MANUAL_TARGET_RPM = Math.max(0.0,
-                    ShooterConfig.MANUAL_TARGET_RPM - rpmStep);
-        }
-        if (shouldStep("g2_dpad_right", g2.gamepad.dpad_right, g2.wasJustPressed(GamepadKeys.Button.DPAD_RIGHT), now)) {
-            hood.adjustPosition(hoodStep);
-        }
-        if (shouldStep("g2_dpad_left", g2.gamepad.dpad_left, g2.wasJustPressed(GamepadKeys.Button.DPAD_LEFT), now)) {
-            hood.adjustPosition(-hoodStep);
-        }
     }
 
     private boolean shouldStep(String key, boolean pressed, boolean justPressed, long nowMs) {
