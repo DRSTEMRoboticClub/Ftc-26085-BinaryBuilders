@@ -11,6 +11,7 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.Range;
 import org.firstinspires.ftc.teamcode.configs.HardwareConfig;
+import org.firstinspires.ftc.teamcode.configs.LocalizationConfig;
 import org.firstinspires.ftc.teamcode.configs.ShooterConfig;
 
 import java.util.List;
@@ -25,21 +26,53 @@ public class ShooterSubsystem extends SubsystemBase {
     private boolean autoAimEnabled = true;
     private double targetShooterRpm = 0.0;
     private double lastTurretPower = 0.0;
-    private int orientUpdateCounter = 0;  // rate-limits updateLimelightOrientation to 20 Hz
-    private double lastAimTx = 0;         // previous tx for PD derivative in TeleOpBlue auto-aim
-    private boolean limelightStarted = false; // true only when the LL was actually started
-    // Dead-reckoning TX injected by TeleOpBlue when the LL can't see the tag.
-    // Null when the LL has a real fix (real TX takes priority).
-    private Double pendingFallbackTx = null;
+    private int orientUpdateCounter = 0;       // rate-limits updateLimelightOrientation to 20 Hz
+    private int statusUpdateCounter = 0;       // rate-limits limelight.getStatus() to ~2 Hz
+    private String cachedStatusString = "OFF";
+    private long lastLLUpdateMs = 0;           // timestamp of last actual LL fetch + extraction
+    private boolean resultIsNew = false;       // true for one call to wasResultUpdated() after each fetch
+    // When true the SDK background polling thread is running; false = stopped to save heap.
+    // We restart 100 ms before each 250 ms read window and stop immediately after reading.
+    // This cuts background LLResult object creation from ~40/s to ~4/s (10x less GC pressure).
+    private boolean llPolling = false;
+    private boolean limelightStarted = false;
 
-    // One Limelight result per loop — call cacheLimelightResult() at loop start,
-    // then all getters/control methods use this instead of calling getLatestResult() repeatedly.
+    // Turret PID state (used by runTurretControl on the TeleOpBlue path).
+    // Reset when the driver uses D-pad so a returning tag doesn't cause a derivative spike.
+    private double turretPidIntegral = 0.0;
+    private double turretPidLastNorm = 0.0;
+    private long turretPidLastTimeNs = 0;
+    private boolean turretPidActive = false; // false → skip derivative on next auto-aim step
+
+    // Encoder snapshot at each LL read — lets runTurretControl estimate the real-time TX
+    // between 500ms LL windows so the PID doesn't drive blind and overshoot the tag.
+    private int turretTicksAtLLUpdate = 0;
+
+    // One Limelight result per loop — call cacheLimelightResult() at loop start.
+    // TX, distance, and visible-IDs are pre-extracted into primitives so every getter
+    // is a plain field read with no list iteration or object allocation per call.
     private LLResult cachedResult = null;
+    private double cachedTxDeg = Double.NaN;   // NaN = tracked tag not visible
+    private double cachedDistCm = -1.0;        // -1 = tag not visible or below horizon
+    private String cachedVisibleTagIds = "none";
 
     // When true, runTurretControl() skips its internal auto-aim and only applies
     // manualPower. Used by LocalSysBase so TurretTracker has sole control over auto-aim
     // and the two systems don't fight over the motor in the same loop iteration.
     private boolean externalTurretControl = false;
+
+    // Recorded at construction so getTurretAngleDeg() can give a relative angle for telemetry.
+    private int turretStartTicks;
+
+    // When true, cacheLimelightResult() keeps cachedResult alive for AprilTagLocalizer
+    // (used in LocalSysBase / PedroAutoRunner). In TeleOpBlue this stays false so the
+    // raw result is released immediately after primitive extraction.
+    private boolean retainCachedResult = false;
+
+    /** Call once at init to keep the raw LLResult alive for AprilTagLocalizer. Auto modes only. */
+    public void setRetainCachedResult(boolean retain) {
+        retainCachedResult = retain;
+    }
 
     // When non-zero, this RPM is used by updatePID() instead of targetShooterRpm,
     // and setShooterVelocityRpm() calls are ignored. Used by the auto-shoot zone
@@ -50,6 +83,7 @@ public class ShooterSubsystem extends SubsystemBase {
     private double pidIntegral = 0.0;
     private double pidLastError = 0.0;
     private long pidLastTimeNs = 0;
+    private double lastLauncherPower = 0.0;
 
     public ShooterSubsystem(HardwareMap hMap) {
         launcherLeft = hMap.get(DcMotorEx.class, HardwareConfig.LAUNCHER_LEFT_NAME);
@@ -67,6 +101,7 @@ public class ShooterSubsystem extends SubsystemBase {
         launcherLeft.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
         launcherRight.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
         turretRotation.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        turretStartTicks = turretRotation.getCurrentPosition();
 
         Limelight3A ll = null;
         try {
@@ -82,6 +117,7 @@ public class ShooterSubsystem extends SubsystemBase {
                 limelight.pipelineSwitch(ShooterConfig.APRILTAG_PIPELINE);
                 limelight.start();
                 limelightStarted = true;
+                llPolling = true;
             } catch (Throwable t) {
                 limelightStarted = false;
             }
@@ -93,13 +129,99 @@ public class ShooterSubsystem extends SubsystemBase {
      * Call this at the top of the OpMode loop, before any method that reads Limelight data.
      * All per-loop Limelight calls then use the cached value — no redundant USB/network polls.
      */
+    /**
+     * Single entry point for all Limelight data. Call every loop — internally gated to
+     * 250 ms (4 Hz) so USB traffic and fiducial processing are minimal.
+     *
+     * On each actual fetch the fiducials list is iterated exactly once and the results
+     * stored as primitives. Every getter below is therefore a plain field read with no
+     * list iteration, no object allocation, and no USB access in the hot loop.
+     */
     public void cacheLimelightResult() {
-        if (!limelightStarted) { cachedResult = null; return; }
+        if (!limelightStarted) {
+            // Retry starting the LL every 2 s in case it wasn't ready on USB at init time.
+            if (limelight != null && ShooterConfig.LIMELIGHT_ENABLED) {
+                long now = System.currentTimeMillis();
+                if (now - lastLLUpdateMs >= 2000) {
+                    lastLLUpdateMs = now;
+                    try {
+                        limelight.pipelineSwitch(ShooterConfig.APRILTAG_PIPELINE);
+                        limelight.start();
+                        limelightStarted = true;
+                        llPolling = true;
+                    } catch (Throwable ignored) { }
+                }
+            }
+            if (!limelightStarted) {
+                cachedResult = null;
+                cachedTxDeg = Double.NaN;
+                cachedDistCm = -1.0;
+                cachedVisibleTagIds = "none";
+                return;
+            }
+        }
+
+        long now = System.currentTimeMillis();
+        long elapsed = now - lastLLUpdateMs;
+
+        // ── Duty-cycle schedule (500 ms total, 50 ms active) ─────────────────────
+        // The SDK background thread is stopped for 450 ms of every 500 ms cycle.
+        // During the 50 ms window at the end it runs and gets ~2 frames at 40 fps.
+        // That is ~4 LLResult objects / second — down from 40/s without stop/start.
+        // The pipeline re-arm after each stop also nudges the LL to flush its internal
+        // result history, which is the likely source of the slow queue accumulation.
+        if (!llPolling && elapsed >= 450) {
+            try { limelight.start(); llPolling = true; } catch (Throwable ignored) { }
+        }
+
+        if (elapsed < 500) return;
+
+        // ── Read window ──────────────────────────────────────────────────────────
+        if (!llPolling) {
+            // Slow-loop fallback: missed the pre-start window; grab whatever is buffered.
+            try { limelight.start(); llPolling = true; } catch (Throwable ignored) { }
+        }
+
+        lastLLUpdateMs = now;
+        resultIsNew = true;
         try {
             cachedResult = limelight.getLatestResult();
+            if (cachedResult != null) {
+                Double tx = getTrackedTagTx(cachedResult, ShooterConfig.TRACKED_TAG_ID);
+                cachedTxDeg = (tx != null) ? tx : Double.NaN;
+                cachedDistCm = extractDistanceCm(cachedResult);
+                cachedVisibleTagIds = extractVisibleTagIds(cachedResult);
+            } else {
+                cachedTxDeg = Double.NaN;
+                cachedDistCm = -1.0;
+                cachedVisibleTagIds = "none";
+            }
+            // Snapshot encoder position so runTurretControl can estimate real-time TX
+            // between LL updates (see encoder-compensation comment there).
+            turretTicksAtLLUpdate = getTurretTicks();
+            // Release the raw result reference immediately so it is GC-eligible as soon as
+            // the SDK also drops its internal reference. In auto modes (retainCachedResult=true)
+            // keep it alive for AprilTagLocalizer, which needs it until applyAprilTagCorrection().
+            if (!retainCachedResult) cachedResult = null;
+
+            // Stop the polling thread; re-arm the pipeline to flush the LL's internal
+            // result buffer. Both calls are best-effort (SDK state stays consistent on throw).
+            try { limelight.stop(); llPolling = false; } catch (Throwable ignored) { }
+            try { limelight.pipelineSwitch(ShooterConfig.APRILTAG_PIPELINE); } catch (Throwable ignored) { }
         } catch (Throwable t) {
-            // Keep last cached value if Limelight momentarily fails
+            llPolling = false;
         }
+    }
+
+    /**
+     * Returns true once per 250ms fetch cycle, then resets to false.
+     * Use to gate any expensive per-result processing (e.g. AprilTagLocalizer) so it
+     * only runs when the cached data is actually new, not on every loop iteration.
+     */
+    public boolean wasResultUpdated() {
+        boolean v = resultIsNew;
+        resultIsNew = false;
+        return v;
     }
 
     /** Lock the flywheel to a specific RPM, ignoring all external setShooterVelocityRpm calls. */
@@ -122,11 +244,20 @@ public class ShooterSubsystem extends SubsystemBase {
     public void updatePID() {
         double target = (autoShootRpmOverride != 0.0) ? autoShootRpmOverride : targetShooterRpm;
         if (target == 0.0) {
-            launcherLeft.setPower(0);
-            launcherRight.setPower(0);
-            pidIntegral = 0.0;
-            pidLastError = 0.0;
-            pidLastTimeNs = 0;
+            // Ramp down at the same rate as ramp up — an abrupt cutoff on a spinning flywheel
+            // generates a back-EMF spike on the power rail that drops the Expansion Hub.
+            if (lastLauncherPower > 0.0) {
+                double power = Math.max(0.0, lastLauncherPower - ShooterConfig.LAUNCHER_RAMP_RATE);
+                lastLauncherPower = power;
+                launcherLeft.setPower(power);
+                launcherRight.setPower(power);
+            } else {
+                launcherLeft.setPower(0);
+                launcherRight.setPower(0);
+                pidIntegral = 0.0;
+                pidLastError = 0.0;
+                pidLastTimeNs = 0;
+            }
             return;
         }
 
@@ -146,6 +277,10 @@ public class ShooterSubsystem extends SubsystemBase {
                 + ShooterConfig.SHOOTER_D * derivative;
 
         output = Range.clip(output, 0.0, 1.0);
+        // Slew-rate limit: cap power increase per loop to prevent inrush brownout on spin-up.
+        output = Range.clip(output, lastLauncherPower - ShooterConfig.LAUNCHER_RAMP_RATE * 2,
+                                    lastLauncherPower + ShooterConfig.LAUNCHER_RAMP_RATE);
+        lastLauncherPower = output;
         launcherLeft.setPower(output);
         launcherRight.setPower(output);
     }
@@ -174,6 +309,13 @@ public class ShooterSubsystem extends SubsystemBase {
         return turretRotation.getCurrentPosition();
     }
 
+    /** Turret angle in degrees from the position at OpMode start. +ve = CCW per TURRET_ANGLE_SIGN. */
+    public double getTurretAngleDeg() {
+        return (getTurretTicks() - turretStartTicks)
+                * LocalizationConfig.TURRET_DEG_PER_TICK
+                * LocalizationConfig.TURRET_ANGLE_SIGN;
+    }
+
     /** Latest Limelight result for this loop (cached by cacheLimelightResult()). */
     public LLResult getLimelightResult() {
         return cachedResult;
@@ -181,11 +323,6 @@ public class ShooterSubsystem extends SubsystemBase {
 
     public void setStopperPosition(double position) {
         stopper.setPosition(position);
-    }
-
-    /** Called by TeleOpBlue each loop before runTurretControl. Null clears the fallback. */
-    public void setFallbackTx(Double tx) {
-        pendingFallbackTx = tx;
     }
 
     public void toggleAutoAim() {
@@ -197,6 +334,7 @@ public class ShooterSubsystem extends SubsystemBase {
         if (limelightStarted) {
             try { limelight.stop(); } catch (Throwable ignored) { }
             limelightStarted = false;
+            llPolling = false;
             cachedResult = null;
             ShooterConfig.LIMELIGHT_ENABLED = false;
         } else {
@@ -204,6 +342,7 @@ public class ShooterSubsystem extends SubsystemBase {
                 limelight.pipelineSwitch(ShooterConfig.APRILTAG_PIPELINE);
                 limelight.start();
                 limelightStarted = true;
+                llPolling = true;
                 ShooterConfig.LIMELIGHT_ENABLED = true;
             } catch (Throwable ignored) { }
         }
@@ -232,15 +371,126 @@ public class ShooterSubsystem extends SubsystemBase {
 
     /** TX (horizontal offset, degrees) of the tracked tag from camera centre. Null if not seen. */
     public Double getTrackedTagTx() {
-        if (cachedResult == null) return null;
-        return getTrackedTagTx(cachedResult, ShooterConfig.TRACKED_TAG_ID);
+        return Double.isNaN(cachedTxDeg) ? null : cachedTxDeg;
     }
 
     /** Comma-separated list of all AprilTag IDs currently visible to the Limelight. */
     public String getVisibleTagIds() {
         if (limelight == null) return "no limelight";
-        if (cachedResult == null) return "no result";
-        List<LLResultTypes.FiducialResult> fids = cachedResult.getFiducialResults();
+        return cachedVisibleTagIds;
+    }
+
+    public void runTurretControl(double manualPower, boolean triggerActive) {
+        if (externalTurretControl) {
+            // TurretTracker owns auto-aim in LocalSysBase — only override on explicit D-pad.
+            if (Math.abs(manualPower) > 0.01) {
+                double power = manualPower * ShooterConfig.TURRET_POWER_SCALE;
+                lastTurretPower = power;
+                turretRotation.setPower(power);
+            }
+            return;
+        }
+
+        // ── Manual D-pad takes priority with instant response ────────────────────
+        if (Math.abs(manualPower) > 0.01) {
+            // Reset PID so the derivative doesn't spike when the tag is reacquired after
+            // a manual move (stale lastNorm + large dt = huge derivative kick).
+            turretPidActive = false;
+            turretPidIntegral = 0.0;
+            double power = manualPower * ShooterConfig.TURRET_POWER_SCALE;
+            lastTurretPower = power;
+            turretRotation.setPower(power);
+            return;
+        }
+
+        // ── PID auto-aim (only while LL has a live fix on the tracked tag) ───────
+        double power = 0;
+        if (autoAimEnabled) {
+            // Encoder-compensated TX: the LL cache is 500ms, so cachedTxDeg is stale
+            // between reads. As the turret physically rotates toward the tag, the tag
+            // appears to move in the opposite direction in the camera frame.
+            //
+            // When the turret rotates CCW by Δ° (TURRET_ANGLE_SIGN convention: CCW = +),
+            // the camera moves left and the tag appears to shift RIGHT → TX increases by Δ.
+            // So: estimatedTx = cachedTxDeg + turretAngleChangeSinceRead
+            //
+            // This gives the PID live feedback between LL updates, so it actually decelerates
+            // as it approaches the tag instead of driving blind at constant power.
+            Double tx = null;
+            if (!Double.isNaN(cachedTxDeg)) {
+                int deltaTicks = getTurretTicks() - turretTicksAtLLUpdate;
+                double deltaAngle = deltaTicks
+                        * LocalizationConfig.TURRET_DEG_PER_TICK
+                        * LocalizationConfig.TURRET_ANGLE_SIGN;
+                // Cap compensation: aggressive robot turns drag the braked turret, making
+                // deltaAngle large and giving a wildly wrong estimated TX. A tag can only
+                // appear to shift ~half-FOV between 500ms updates during normal tracking.
+                deltaAngle = Range.clip(deltaAngle,
+                        -ShooterConfig.CAMERA_HALF_FOV_DEG,
+                         ShooterConfig.CAMERA_HALF_FOV_DEG);
+                tx = cachedTxDeg + deltaAngle;
+            }
+            if (tx != null && Math.abs(tx) > ShooterConfig.AUTO_AIM_DEADBAND_DEG) {
+                double norm = Range.clip(tx / ShooterConfig.CAMERA_HALF_FOV_DEG, -1.0, 1.0);
+
+                long nowNs = System.nanoTime();
+                double derivative = 0.0;
+                if (turretPidActive) {
+                    double dt = Math.min((nowNs - turretPidLastTimeNs) / 1e9, 0.2);
+                    if (dt > 0) {
+                        derivative = (norm - turretPidLastNorm) / dt;
+                        turretPidIntegral += norm * dt;
+                        // Anti-windup: clamp so integral alone can't saturate the output.
+                        turretPidIntegral = Range.clip(turretPidIntegral, -1.0, 1.0);
+                    }
+                }
+                turretPidLastNorm = norm;
+                turretPidLastTimeNs = nowNs;
+                turretPidActive = true;
+
+                double pid = (norm                * ShooterConfig.AUTO_AIM_P_GAIN
+                            + turretPidIntegral   * ShooterConfig.AUTO_AIM_I_GAIN
+                            + derivative          * ShooterConfig.AUTO_AIM_D_GAIN)
+                           * ShooterConfig.AUTO_AIM_DIRECTION_SIGN;
+                power = Range.clip(pid, -ShooterConfig.AUTO_AIM_MAX_POWER, ShooterConfig.AUTO_AIM_MAX_POWER);
+                if (Math.abs(power) > 0 && Math.abs(power) < ShooterConfig.AUTO_AIM_MIN_POWER) {
+                    power = Math.signum(power) * ShooterConfig.AUTO_AIM_MIN_POWER;
+                }
+            } else if (tx == null) {
+                // No tag — hold position, let D-pad move freely. PID stays dormant.
+                turretPidActive = false;
+                turretPidIntegral = 0.0;
+            }
+        }
+
+        lastTurretPower = power;
+        turretRotation.setPower(power);
+    }
+
+    /** Horizontal distance (cm) to the tracked tag. Pre-computed in cacheLimelightResult(). */
+    public double getTrackedTagDistanceCm() {
+        return cachedDistCm;
+    }
+
+    private double extractDistanceCm(LLResult result) {
+        try {
+            List<LLResultTypes.FiducialResult> fids = result.getFiducialResults();
+            if (fids == null) return -1;
+            for (LLResultTypes.FiducialResult f : fids) {
+                if (f.getFiducialId() != ShooterConfig.TRACKED_TAG_ID) continue;
+                double ty         = f.getTargetYDegrees();
+                double heightDiff = ShooterConfig.TAG_CENTER_HEIGHT_CM - ShooterConfig.CAMERA_HEIGHT_CM;
+                double angleDeg   = ShooterConfig.CAMERA_TILT_DEG + ty;
+                if (angleDeg <= 1.0) return -1;
+                double d = heightDiff / Math.tan(Math.toRadians(angleDeg));
+                return (d > 0 && !Double.isNaN(d) && !Double.isInfinite(d)) ? d : -1;
+            }
+        } catch (Throwable ignored) { }
+        return -1;
+    }
+
+    private String extractVisibleTagIds(LLResult result) {
+        List<LLResultTypes.FiducialResult> fids = result.getFiducialResults();
         if (fids == null || fids.isEmpty()) return "none";
         StringBuilder sb = new StringBuilder();
         for (LLResultTypes.FiducialResult f : fids) {
@@ -248,101 +498,6 @@ public class ShooterSubsystem extends SubsystemBase {
             sb.append(f.getFiducialId());
         }
         return sb.toString();
-    }
-
-    public void runTurretControl(double manualPower, boolean triggerActive) {
-        if (externalTurretControl) {
-            // TurretTracker owns auto-aim in LocalSysBase.
-            // Only override when the driver is actively pressing D-pad.
-            if (Math.abs(manualPower) > 0.01) {
-                double power = manualPower * ShooterConfig.TURRET_POWER_SCALE;
-                lastTurretPower = power;
-                turretRotation.setPower(power);
-            }
-            // No D-pad input → leave the motor alone so TurretTracker can write next.
-            return;
-        }
-
-        // ── TeleOpBlue path: PD auto-aim (mirrors TurretTracker behaviour) ──────
-        // Manual D-pad input always takes priority; auto-aim only runs when idle.
-        double power = manualPower * ShooterConfig.TURRET_POWER_SCALE;
-
-        if (autoAimEnabled && Math.abs(manualPower) < 0.01) {
-            // Real TX from LL; fall back to dead-reckoning TX if tag not visible.
-            Double tx = (cachedResult != null)
-                    ? getTrackedTagTx(cachedResult, ShooterConfig.TRACKED_TAG_ID)
-                    : null;
-            if (tx == null) tx = pendingFallbackTx;
-
-            if (tx == null) {
-                // No LL fix AND no dead-reckoning estimate — hold still.
-                power = 0;
-            } else if (Math.abs(tx) <= ShooterConfig.AUTO_AIM_DEADBAND_DEG) {
-                // Tag is centred — no correction needed.
-                power = 0;
-                lastAimTx = tx;
-            } else {
-                // Compare tag centre to camera centre and scale speed with the offset.
-                // Normalise by half-FOV so the gain is independent of camera model:
-                //   norm = 0   → tag at camera centre (only deadband prevents reaching here)
-                //   norm = ±1  → tag at the edge of the camera view → maximum correction
-                double norm  = Range.clip(tx / ShooterConfig.CAMERA_HALF_FOV_DEG, -1.0, 1.0);
-                double dNorm = Range.clip((tx - lastAimTx) / ShooterConfig.CAMERA_HALF_FOV_DEG,
-                                         -0.5, 0.5);
-                lastAimTx = tx;
-
-                // P: speed proportional to offset. D: damping — reduces speed as turret converges.
-                double pd = (norm  * ShooterConfig.AUTO_AIM_P_GAIN
-                           + dNorm * ShooterConfig.AUTO_AIM_D_GAIN)
-                          * ShooterConfig.AUTO_AIM_DIRECTION_SIGN;
-                power = Range.clip(pd,
-                        -ShooterConfig.AUTO_AIM_MAX_POWER,
-                         ShooterConfig.AUTO_AIM_MAX_POWER);
-
-                // Min power floor so the motor overcomes stiction near the deadband edge.
-                if (Math.abs(power) > 0 && Math.abs(power) < ShooterConfig.AUTO_AIM_MIN_POWER) {
-                    power = Math.signum(power) * ShooterConfig.AUTO_AIM_MIN_POWER;
-                }
-            }
-        }
-
-        // Slew-rate limit: prevents abrupt direction reversals from causing current spikes.
-        double maxChange = 0.10;
-        power = Range.clip(power, lastTurretPower - maxChange, lastTurretPower + maxChange);
-        lastTurretPower = power;
-        turretRotation.setPower(power);
-    }
-
-    /**
-     * Horizontal distance (cm) from camera to tag using TY + known geometry.
-     *
-     *   d = (TAG_CENTER_HEIGHT_CM - CAMERA_HEIGHT_CM) / tan(CAMERA_TILT_DEG + ty)
-     *
-     * This replaces the 3D pose solver entirely — one tan() call per loop.
-     * No 3D pose estimation needed on the Limelight pipeline, which eliminates
-     * the CPU/current spike that caused the Control Hub to brownout on detection.
-     *
-     * Tune CAMERA_HEIGHT_CM, TAG_CENTER_HEIGHT_CM, CAMERA_TILT_DEG in FTC Dashboard
-     * and verify against a tape measure at a known distance.
-     */
-    public double getTrackedTagDistanceCm() {
-        if (cachedResult == null) return -1;
-        try {
-            List<LLResultTypes.FiducialResult> fids = cachedResult.getFiducialResults();
-            if (fids == null) return -1;
-            for (LLResultTypes.FiducialResult f : fids) {
-                if (f.getFiducialId() != ShooterConfig.TRACKED_TAG_ID) continue;
-                double ty          = f.getTargetYDegrees();
-                double heightDiff  = ShooterConfig.TAG_CENTER_HEIGHT_CM - ShooterConfig.CAMERA_HEIGHT_CM;
-                double angleDeg    = ShooterConfig.CAMERA_TILT_DEG + ty;
-                if (angleDeg <= 1.0) return -1; // tag at/below horizon — formula undefined
-                double d = heightDiff / Math.tan(Math.toRadians(angleDeg));
-                return (d > 0 && !Double.isNaN(d) && !Double.isInfinite(d)) ? d : -1;
-            }
-        } catch (Throwable t) {
-            return -1;
-        }
-        return -1;
     }
 
     private Double getTrackedTagTx(LLResult result, int tagId) {
@@ -374,18 +529,22 @@ public class ShooterSubsystem extends SubsystemBase {
     }
 
     /**
-     * FPS / CPU / temperature from the LL status endpoint.
-     * Called at most once per telemetry render — not called in the hot path.
+     * FPS / CPU / temperature from the LL status endpoint, returned from a cache.
+     * The underlying limelight.getStatus() USB call is limited to ~2 Hz so it does not
+     * saturate the USB bus alongside cacheLimelightResult() in the tight loop.
      * FPS=0 means the LL is not processing frames (USB/power problem).
      */
     public String getLimelightStatus() {
         if (limelight == null || !limelightStarted) return "OFF";
+        if (++statusUpdateCounter % 25 != 0) return cachedStatusString;
         try {
             LLStatus s = limelight.getStatus();
-            return String.format("fps=%d cpu=%.0f%% %.0fC", (int) s.getFps(), s.getCpu(), s.getTemp());
+            cachedStatusString = String.format("fps=%d cpu=%.0f%% %.0fC",
+                    (int) s.getFps(), s.getCpu(), s.getTemp());
         } catch (Throwable t) {
-            return "ERR";
+            cachedStatusString = "ERR";
         }
+        return cachedStatusString;
     }
 
     /**
@@ -396,16 +555,21 @@ public class ShooterSubsystem extends SubsystemBase {
     public String getLimelightDebugInfo() {
         if (limelight == null) return "LL=NULL (not in hardware map?)";
         if (cachedResult == null) return "result=NULL";
-        int fids = (cachedResult.getFiducialResults() != null)
-                ? cachedResult.getFiducialResults().size() : -1;
-        return String.format("valid=%b fids=%d tx=%.1f°",
-                cachedResult.isValid(), fids, cachedResult.getTx());
+        return String.format("valid=%b ids=%s tx=%.1f°",
+                cachedResult.isValid(), cachedVisibleTagIds,
+                Double.isNaN(cachedTxDeg) ? 0.0 : cachedTxDeg);
     }
 
     public void stopLimelight() {
         if (limelightStarted) {
             try { limelight.stop(); } catch (Throwable ignored) { }
         }
+    }
+
+    /** Raw encoder ticks/s — average of left and right. Use to verify SHOOTER_ENCODER_EVENTS_PER_REV.
+     *  Expected: rawTicksPerSec / EVENTS_PER_REV * 60 == displayed RPM. */
+    public double getRawLauncherTicksPerSec() {
+        return (Math.abs(launcherLeft.getVelocity()) + Math.abs(launcherRight.getVelocity())) / 2.0;
     }
 
     private double rpmToTicksPerSecond(double rpm) {

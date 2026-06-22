@@ -12,11 +12,15 @@ public class ShooterConfig {
     // This matches the LocalSys TurretTracker gains exactly so both modes behave the same.
     public static double CAMERA_HALF_FOV_DEG = 29.8;   // Limelight 3A horizontal half-FOV
 
-    public static double AUTO_AIM_P_GAIN = 0.7;          // power at FOV edge (normalised P)
-    public static double AUTO_AIM_D_GAIN = 0.6;          // derivative damping (normalised D)
-    public static double AUTO_AIM_DEADBAND_DEG = 2.5;    // dead zone — stop correcting when centred
-    public static double AUTO_AIM_MIN_POWER = 0.08;      // floor power to overcome BRAKE-mode stiction
-    public static double AUTO_AIM_MAX_POWER = 0.3;       // reduced to limit current draw when LL is active
+    // Gains act on normalised TX: norm = tx / CAMERA_HALF_FOV_DEG → [-1, +1]
+    // TX is encoder-compensated between LL updates so the PID sees live error, not stale.
+    // Start here and tune P up if tracking is too sluggish, D up if it overshoots.
+    public static double AUTO_AIM_P_GAIN = 0.8;
+    public static double AUTO_AIM_I_GAIN = 0.0;    // raise to ~0.05 if turret consistently stops short
+    public static double AUTO_AIM_D_GAIN = 0.3;    // time-based (power per normalised-error/s)
+    public static double AUTO_AIM_DEADBAND_DEG = 2.5;
+    public static double AUTO_AIM_MIN_POWER = 0.05;
+    public static double AUTO_AIM_MAX_POWER = 0.5;
 
     // Step size per G2 D-pad click when tuning AUTO_AIM_P_GAIN live
     public static double AUTO_AIM_P_TUNE_STEP = 0.05;
@@ -25,6 +29,18 @@ public class ShooterConfig {
     public static double AUTO_AIM_DIRECTION_SIGN = -1.0;
     public static int TRACKED_TAG_ID = 20; // Blue alliance hub tag; Red = 24
     public static int APRILTAG_PIPELINE = 0;
+
+    // Multiplier applied on top of the polynomial RPM target.
+    // 1.07 = 7 % boost — enough to reliably clear 3 rings; tune via FTC Dashboard.
+    public static double POLY_RPM_BOOST = 1.0;
+
+    // Distance threshold (cm) below which raw LL TX / TY measurements are used for turret
+    // tracking and shooter compensation. Beyond this the localizer field position takes over:
+    // dead-reckoning TX for the turret and hypot(dx,dy) for distance.
+    // At 360x240 the pixel-level accuracy degrades past ~200 cm; the localizer (seeded by
+    // close-range LL fixes) gives a stable, resolution-independent distance at long range.
+    // Tune via FTC Dashboard — set lower if the turret overshoots at range.
+    public static double LL_FALLBACK_DISTANCE_CM = 200.0;
 
     // DIAGNOSTIC: when false, the Limelight is never started and never read — the OpMode runs
     // identically in every other respect. Toggle from FTC Dashboard to A/B test the crash:
@@ -40,6 +56,11 @@ public class ShooterConfig {
     public static double SHOOTER_I = 0.0;
     public static double SHOOTER_D = 0.0001;
 
+    // Maximum power increase per loop iteration for the launcher motors.
+    // Limits inrush current on spin-up to prevent brownouts.
+    // 0.04 reaches full power in ~25 loops (~0.5s at 50 Hz). Tune via FTC Dashboard.
+    public static double LAUNCHER_RAMP_RATE = 0.04;
+
     // Shooter Target
     public static double SHOOTER_POWER = 0.80;
 
@@ -50,9 +71,17 @@ public class ShooterConfig {
     // Velocity control ceiling. Trigger input scales 0..MAX_LAUNCHER_POWER of this RPM.
     public static double MAX_LAUNCHER_RPM = 6000.0;
 
-    // Shooter encoder spec (GoBILDA 5000 RPM motor): 537.7 counts per revolution.
+    // Counts per revolution as the REV hub's getVelocity() reports them, used to convert
+    // encoder ticks/s <-> RPM. This MUST match what the hub actually counts or the closed-loop
+    // controller settles at the wrong speed: if this is 2x too high, the displayed RPM reads
+    // half of real, the loop drives power until the (halved) reading hits target, and the
+    // flywheel ends up spinning at 2x the commanded RPM.
+    //
+    // Measured empirically: a 3000 RPM command produced ~6000 real RPM with this set to 28,
+    // so the true counts/rev is 14 (the hub is not 4x-quadrature decoding this encoder).
+    // Re-verify with the "raw t/s" telemetry: real_RPM = raw_t/s * 60 / this value.
     public static double SHOOTER_ENCODER_CYCLES_PER_REV = 7.0;
-    public static double SHOOTER_ENCODER_EVENTS_PER_REV = 28;
+    public static double SHOOTER_ENCODER_EVENTS_PER_REV = 14;
 
     // Manual shooter hold tuning (used from TeleOp controls)
     public static double MANUAL_TARGET_RPM = 3500.0;

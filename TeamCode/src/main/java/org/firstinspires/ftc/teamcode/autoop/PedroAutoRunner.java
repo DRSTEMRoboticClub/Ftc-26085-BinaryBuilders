@@ -88,6 +88,7 @@ public class PedroAutoRunner {
         this.tagStackReady = true;
         ShooterConfig.TRACKED_TAG_ID = tagId;
         USE_APRILTAG_CORRECTION = true;
+        shooter.setRetainCachedResult(true); // AprilTagLocalizer needs the raw LLResult
     }
 
     public void followPath(Path path) {
@@ -109,13 +110,17 @@ public class PedroAutoRunner {
     public void update() {
         follower.update();
         if (USE_APRILTAG_CORRECTION && tagStackReady) {
-            applyAprilTagCorrection();
+            // Turret tracking uses the cached TX primitive — safe to run every loop.
+            turretTracker.update(shooter, shooter.getTrackedTagTx());
+            // 3D pose solver in AprilTagLocalizer is expensive; only run when the
+            // LL cache has fresh data (same 250ms cadence as cacheLimelightResult).
+            if (shooter.wasResultUpdated()) {
+                applyAprilTagCorrection();
+            }
         }
     }
 
     private void applyAprilTagCorrection() {
-        // Keep the turret centered on the tag and read its angle (same as TeleOp).
-        turretTracker.update(shooter, tagId);
         double turretRad = Math.toRadians(turretTracker.getLastTurretAngleDegrees());
 
         Pose current = follower.getPose();

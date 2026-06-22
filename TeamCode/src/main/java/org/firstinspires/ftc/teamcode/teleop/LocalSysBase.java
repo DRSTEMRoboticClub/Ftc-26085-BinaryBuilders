@@ -51,6 +51,7 @@ public abstract class LocalSysBase extends CommandOpMode {
     private List<LynxModule> allHubs;
 
     private long lastLoopTime = 0;
+    private long lastTelemetryRenderMs = 0;
     private double minVoltage = 14.0;
 
     // ---- Localization ----
@@ -106,6 +107,7 @@ public abstract class LocalSysBase extends CommandOpMode {
     @Override
     public void runOpMode() throws InterruptedException {
         initialize();
+        telemetry.setMsTransmissionInterval(100);
         waitForStart();
 
         while (opModeIsActive() && !isStopRequested()) {
@@ -133,18 +135,23 @@ public abstract class LocalSysBase extends CommandOpMode {
             localizer.update(headingDeg);
             shooter.updateLimelightOrientation(headingDeg);
             // TurretTracker only runs in auto-aim mode.
-            // In manual mode (G1 X), D-pad from runTurretControl() has sole control.
+            // Pass the pre-extracted TX from the cache — no raw LLResult access or
+            // fiducial list iteration here; that work was done once in cacheLimelightResult().
             if (shooter.isAutoAimEnabled()) {
                 try {
-                    turretTracker.update(shooter, getTagId());
+                    turretTracker.update(shooter, shooter.getTrackedTagTx());
                 } catch (Exception e) {
                     // Ignore bad frames — turret holds last power
                 }
             }
-            try {
-                applyAprilTagCorrection();   // updates lastObs for this frame
-            } catch (Exception e) {
-                // Ignore malformed Limelight pose data rather than crashing
+            // AprilTagLocalizer calls getTargetPoseCameraSpace() (3D pose solver) internally.
+            // Gate it to the 250ms cache cadence so the solver only runs when data is fresh.
+            if (shooter.wasResultUpdated()) {
+                try {
+                    applyAprilTagCorrection();
+                } catch (Exception e) {
+                    // Ignore malformed Limelight pose data rather than crashing
+                }
             }
 
             // 1c) Auto-shoot stopper — runs AFTER inputHandler so we override its
@@ -159,7 +166,10 @@ public abstract class LocalSysBase extends CommandOpMode {
             // 5) Telemetry.
             double voltage = batteryVoltageSensor.getVoltage();
             if (voltage < minVoltage) minVoltage = voltage;
-            renderTelemetry(voltage, loopTime);
+            if (currentTime - lastTelemetryRenderMs >= 100) {
+                renderTelemetry(voltage, loopTime);
+                lastTelemetryRenderMs = currentTime;
+            }
             telemetry.update();
         }
 

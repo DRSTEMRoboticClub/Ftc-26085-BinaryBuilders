@@ -1,5 +1,7 @@
 package org.firstinspires.ftc.teamcode.teleop;
 
+import android.util.Log;
+
 import com.acmerobotics.roadrunner.Pose2d;
 import com.acmerobotics.roadrunner.Vector2d;
 import com.arcrobotics.ftclib.command.CommandOpMode;
@@ -30,14 +32,34 @@ public class TeleOpBlue extends CommandOpMode {
 
     // ── Dead-reckoning localizer (fallback when LL can't see the tag) ─────────
     private MecanumLocalizer localizer;
-    private int turretStartTicks;
 
     // ── Health / crash diagnostics ──────────────────────────────────────────
     private long lastLoopTime = 0;
     private long maxLoopMs = 0;
+    private long lastTelemetryRenderMs = 0;
     private double minVoltage = 14.0;
     private int loopErrors = 0;
     private String lastError = "none";
+
+    // GC / heap diagnostics — heap drop while tag visible = GC pressure from LL SDK.
+    // longLoopCount = loops that took >30 ms (major GC pauses stall the thread for 50–500 ms).
+    private int longLoopCount = 0;
+    private long heapFreeMb = 0;
+    private long heapTotalMb = 0;
+    // Tag-visibility streak: tracks how many seconds the LL has been seeing tag 20 continuously.
+    // Disconnect typically happens at 5–6 s; this number tells us exactly when it happened.
+    private long tagVisibleSinceMs = 0;
+    // Logcat logging fires every 500 ms so the data is readable via ADB after a crash.
+    private long lastLogMs = 0;
+
+    // ── Long-range localizer fallback ────────────────────────────────────────
+    // True once correctLocalizerFromTag() has been called at least once, meaning the
+    // localizer pose has been seeded by a close-range LL fix and can be trusted for
+    // computing distance + TX when the tag is beyond LL_FALLBACK_DISTANCE_CM.
+    private boolean localizerCalibrated = false;
+    // Set each loop — passed into renderTelemetry() to label source on the DS.
+    private double effectiveDist = -1.0;
+    private boolean usingLocFallback = false;
 
     // Captures uncaught crashes from EVERY thread (the Limelight SDK's polling thread, any
     // leftover daemon threads, the main loop). catch(Throwable) below only protects the main
@@ -66,7 +88,6 @@ public class TeleOpBlue extends CommandOpMode {
         }
 
         localizer = new MecanumLocalizer(hardwareMap);
-        turretStartTicks = shooter.getTurretTicks();
 
         // TRACKED_TAG_ID is static and overwritten per alliance by LocalSys — force it back.
         ShooterConfig.TRACKED_TAG_ID = 20;
@@ -98,25 +119,76 @@ public class TeleOpBlue extends CommandOpMode {
                 long loopTime = (lastLoopTime == 0) ? 0 : now - lastLoopTime;
                 lastLoopTime = now;
                 if (loopTime > maxLoopMs) maxLoopMs = loopTime;
+                if (loopTime > 30) longLoopCount++;
+
+                // Sample heap state (cheap — reads JVM counters only).
+                Runtime rt = Runtime.getRuntime();
+                heapFreeMb  = rt.freeMemory()  >> 20;
+                heapTotalMb = rt.totalMemory() >> 20;
 
                 // Localizer: integrate encoder + IMU deltas into robot pose estimate.
                 // Uses heading from the previous loop (one loop old — negligible at ~50 Hz).
                 localizer.update(drive.getHeading());
 
-                // Tag correction: when the LL has a fix, blend the back-calculated robot
-                // position into the localizer so dead-reckoning stays accurate after the tag
-                // disappears (e.g. robot drives behind an obstacle or moves out of LL range).
+                // ── LL data + localizer correction ───────────────────────────────────
                 double dist  = shooter.getTrackedTagDistanceCm();
                 Double tagTx = shooter.getTrackedTagTx();
-                if (dist > 0 && tagTx != null) correctLocalizerFromTag(dist, tagTx);
 
-                // Provide the dead-reckoning TX BEFORE inputHandler.update() which calls
-                // runTurretControl(). When the LL sees the tag this is null (real TX takes over).
-                shooter.setFallbackTx(tagTx == null ? computeDeadReckonTx() : null);
+                // Only seed the localizer with LL fixes when the tag is close enough for the
+                // 360x240 resolution to give accurate TX/TY readings. Beyond LL_FALLBACK_DISTANCE_CM
+                // the pixel measurements degrade and would introduce noisy corrections.
+                boolean tagCloseEnough = (dist > 0 && dist <= ShooterConfig.LL_FALLBACK_DISTANCE_CM);
+                if (tagCloseEnough && tagTx != null) {
+                    correctLocalizerFromTag(dist, tagTx);
+                    localizerCalibrated = true;
+                }
+
+                // ── Effective TX + distance selection ────────────────────────────────
+                // Close range  (<= LL_FALLBACK_DISTANCE_CM): raw LL TX and TY distance.
+                // Long range   (>  LL_FALLBACK_DISTANCE_CM): dead-reckoning TX, localizer
+                //   distance — both derived from the robot's field-position estimate, so
+                //   they are resolution-independent and stable at any range.
+                Double effectiveTx;
+                if (tagCloseEnough) {
+                    effectiveTx  = tagTx;
+                    effectiveDist = dist;
+                    usingLocFallback = false;
+                } else if (localizerCalibrated) {
+                    effectiveTx  = null;          // null forces dead-reckoning in runTurretControl
+                    effectiveDist = computeLocalizerDistanceCm();
+                    usingLocFallback = true;
+                } else {
+                    // Localizer not yet seeded — use raw LL values even if imprecise.
+                    effectiveTx  = tagTx;
+                    effectiveDist = dist;
+                    usingLocFallback = false;
+                }
+
+                // Track continuous tag-visible streak for disconnect correlation.
+                if (tagTx != null) {
+                    if (tagVisibleSinceMs == 0) tagVisibleSinceMs = now;
+                } else {
+                    tagVisibleSinceMs = 0;
+                }
+                long tagStreakMs = (tagVisibleSinceMs == 0) ? 0 : now - tagVisibleSinceMs;
+
+                // Log to logcat every 500 ms — survives a DS disconnect, readable via ADB after.
+                // Command:  adb logcat -d | grep TELE_BLUE
+                if (now - lastLogMs >= 500) {
+                    lastLogMs = now;
+                    Log.d("TELE_BLUE", String.format(
+                        "loop=%dms max=%dms gc>30ms=%d heap=%d/%dMB tag=%.1fs dist=%.0fcm(%s) ll=%s err=%d",
+                        loopTime, maxLoopMs, longLoopCount,
+                        heapFreeMb, heapTotalMb,
+                        tagStreakMs / 1000.0, effectiveDist,
+                        usingLocFallback ? "LOC" : "LL",
+                        shooter.getLimelightStatus(), loopErrors));
+                }
+
 
                 // Distance compensation (PRE): set the flywheel RPM target from the polynomial
                 // BEFORE inputHandler runs updatePID(), so the custom velocity PID uses it.
-                double compDist = applyShooterCompensation();
+                double compDist = applyShooterCompensation(effectiveDist);
 
                 inputHandler.update(drive, intake, shooter, hood);
 
@@ -129,7 +201,12 @@ public class TeleOpBlue extends CommandOpMode {
                 double voltage = batteryVoltageSensor.getVoltage();
                 if (voltage < minVoltage) minVoltage = voltage;
 
-                renderTelemetry(loopTime, voltage);
+                // renderTelemetry() builds strings every call; gate it to the actual DS
+                // transmission interval so String.format() allocations don't run every loop.
+                if (now - lastTelemetryRenderMs >= 100) {
+                    renderTelemetry(loopTime, voltage);
+                    lastTelemetryRenderMs = now;
+                }
             } catch (Throwable t) {
                 // Catch Throwable (not just Exception) so an Error can't silently end runOpMode().
                 loopErrors++;
@@ -149,40 +226,65 @@ public class TeleOpBlue extends CommandOpMode {
     private void renderTelemetry(long loopTime, double voltage) {
         Double tx   = shooter.getTrackedTagTx();
         double dist = shooter.getTrackedTagDistanceCm();
+        long tagStreakMs = (tagVisibleSinceMs == 0) ? 0 : System.currentTimeMillis() - tagVisibleSinceMs;
 
         String voltWarn = voltage < 11.0 ? " !!LOW!!" : voltage < 12.0 ? " !LOW!" : "";
-        telemetry.addLine(String.format("BLUE | tag %d | aim %s | LL %s | %dms | %.2fV%s",
+        telemetry.addLine(String.format("BLUE | tag %d | aim %s | LL %s | %dms | %.2fV (min %.2fV)%s",
                 ShooterConfig.TRACKED_TAG_ID, shooter.isAutoAimEnabled() ? "ON" : "OFF",
                 shooter.isLimelightEnabled() ? "ON" : "OFF",
-                loopTime, voltage, voltWarn));
+                loopTime, voltage, minVoltage, voltWarn));
 
         if (tx != null) {
             double normPct = Math.abs(tx) / ShooterConfig.CAMERA_HALF_FOV_DEG * 100.0;
-            telemetry.addLine(String.format("LL  TAG  tx %.1f (%.0f%%)  %s  | %s",
-                    tx, normPct, dist > 0 ? String.format("dist %.0fcm", dist) : "no 3D",
+            String distStr = effectiveDist > 0
+                    ? String.format("dist %.0fcm %s", effectiveDist, usingLocFallback ? "[LOC]" : "[LL]")
+                    : "no dist";
+            telemetry.addLine(String.format("LL  TAG  tx %.1f (%.0f%%)  %s  | vis %.1fs | %s",
+                    tx, normPct, distStr, tagStreakMs / 1000.0,
                     shooter.getLimelightStatus()));
         } else {
-            telemetry.addLine(String.format("LL  no tag (sees %s) | %s",
-                    shooter.getVisibleTagIds(), shooter.getLimelightStatus()));
+            String src = usingLocFallback ? "[LOC dist]" : "";
+            telemetry.addLine(String.format("LL  no tag (sees %s) %s| %s",
+                    shooter.getVisibleTagIds(), src, shooter.getLimelightStatus()));
         }
 
-        if (dist > 0) {
+        if (effectiveDist > 0) {
             double d = Math.max(ShooterConfig.MIN_COMP_DISTANCE,
-                    Math.min(dist, ShooterConfig.MAX_COMP_DISTANCE));
-            telemetry.addLine(String.format("Poly %.0fcm -> %.0fRPM hood %.2f | act %.0fRPM hood %.2f",
-                    d, ShooterConfig.hoodTuneAngle(d), ShooterConfig.hoodPitch(d),
-                    shooter.getShooterVelocityRpm(), hood.getPosition()));
+                    Math.min(effectiveDist, ShooterConfig.MAX_COMP_DISTANCE));
+            double polyRpm  = ShooterConfig.hoodTuneAngle(d);
+            double boost    = effectiveDist <= ShooterConfig.LL_FALLBACK_DISTANCE_CM
+                    ? ShooterConfig.POLY_RPM_BOOST : 1.0;
+            double targetRpm = polyRpm * boost;
+            telemetry.addLine(String.format("Poly %.0fcm poly=%.0f boost=%.0f | act=%.0f raw=%.0f t/s",
+                    d, polyRpm, targetRpm,
+                    shooter.getShooterVelocityRpm(), shooter.getRawLauncherTicksPerSec()));
+            telemetry.addLine(String.format("Hood poly=%.2f actual=%.2f | CPR=%d",
+                    ShooterConfig.hoodPitch(d), hood.getPosition(),
+                    (int) ShooterConfig.SHOOTER_ENCODER_EVENTS_PER_REV));
         } else {
-            telemetry.addLine(String.format("Shooter %.0f/%.0f RPM hood %.2f",
-                    shooter.getShooterVelocityRpm(), shooter.getTargetShooterRpm(), hood.getPosition()));
+            telemetry.addLine(String.format("Shooter act=%.0f target=%.0f RPM | raw=%.0f t/s",
+                    shooter.getShooterVelocityRpm(), shooter.getEffectiveTargetRpm(),
+                    shooter.getRawLauncherTicksPerSec()));
         }
 
         Pose2d pose = localizer.getPose();
-        telemetry.addLine(String.format("Turret %.2f %s P=%.2f | Pose %.0f,%.0f H%.0f",
-                shooter.getLastTurretPower(),
-                shooter.isAutoAimEnabled() ? (shooter.getTrackedTagTx() != null ? "LL" : "DR") : "MAN",
-                ShooterConfig.AUTO_AIM_P_GAIN,
-                pose.position.x, pose.position.y, drive.getHeading()));
+        String turretSrc = !shooter.isAutoAimEnabled() ? "MAN"
+                : usingLocFallback              ? "LOC"
+                : shooter.getTrackedTagTx() != null ? "LL"
+                : "DR";
+        double turretAngleDeg = shooter.getTurretAngleDeg();
+        telemetry.addLine(String.format("Turret %.2f %s | %.1f° (ticks %d)",
+                shooter.getLastTurretPower(), turretSrc,
+                turretAngleDeg, shooter.getTurretTicks()));
+        telemetry.addLine(String.format("Pose %.0f,%.0f H%.0f | P=%.2f I=%.2f D=%.2f",
+                pose.position.x, pose.position.y, drive.getHeading(),
+                ShooterConfig.AUTO_AIM_P_GAIN, ShooterConfig.AUTO_AIM_I_GAIN, ShooterConfig.AUTO_AIM_D_GAIN));
+
+        // Heap + GC diagnostics — heap drops while tag visible → GC pressure from LL SDK.
+        // gc>30ms rises steadily → GC pauses are the disconnect cause.
+        // If heap is stable but gc>30ms still rises → something else is stalling the loop.
+        telemetry.addLine(String.format("Heap %dMB free / %dMB alloc | gc>30ms: %d loops",
+                heapFreeMb, heapTotalMb, longLoopCount));
 
         telemetry.addLine(String.format("Health maxLoop %dms minV %.1f err %d (%s)",
                 maxLoopMs, minVoltage, loopErrors, lastError));
@@ -198,8 +300,7 @@ public class TeleOpBlue extends CommandOpMode {
      *
      * @return the clamped distance (cm) if compensation is active this loop, else -1.
      */
-    private double applyShooterCompensation() {
-        double dist = shooter.getTrackedTagDistanceCm();
+    private double applyShooterCompensation(double dist) {
         if (!ShooterConfig.USE_DISTANCE_COMPENSATION || dist <= 0) {
             shooter.clearAutoShootRpmOverride();   // fall back to manual RPM control
             return -1;
@@ -213,7 +314,12 @@ public class TeleOpBlue extends CommandOpMode {
                 || gamepad1.left_bumper
                 || gamepad1.right_trigger > ControlsConfig.TRIGGER_THRESHOLD;
         if (wantShoot) {
-            shooter.setAutoShootRpmOverride(ShooterConfig.hoodTuneAngle(d));
+            // Only apply the RPM boost at close range where the polynomial under-compensates.
+            // Beyond LL_FALLBACK_DISTANCE_CM the polynomial is already accurate; the boost
+            // overshoots badly at long range.
+            double boost = dist <= ShooterConfig.LL_FALLBACK_DISTANCE_CM
+                    ? ShooterConfig.POLY_RPM_BOOST : 1.0;
+            shooter.setAutoShootRpmOverride(ShooterConfig.hoodTuneAngle(d) * boost);
         } else {
             shooter.clearAutoShootRpmOverride();
         }
@@ -241,16 +347,26 @@ public class TeleOpBlue extends CommandOpMode {
         // Normalise to (-π, π]
         while (robotRelAngleRad >  Math.PI) robotRelAngleRad -= 2 * Math.PI;
         while (robotRelAngleRad <= -Math.PI) robotRelAngleRad += 2 * Math.PI;
-        // Current turret angle from its TeleOp start position
-        double turretAngleRad = Math.toRadians(
-                (shooter.getTurretTicks() - turretStartTicks)
-                * LocalizationConfig.TURRET_DEG_PER_TICK
-                * LocalizationConfig.TURRET_ANGLE_SIGN);
+        double turretAngleRad = Math.toRadians(shooter.getTurretAngleDeg());
         // Camera-relative angle to tag; negate to match LL TX sign convention
         double cameraToTagRad = robotRelAngleRad - turretAngleRad;
         while (cameraToTagRad >  Math.PI) cameraToTagRad -= 2 * Math.PI;
         while (cameraToTagRad <= -Math.PI) cameraToTagRad += 2 * Math.PI;
         return -Math.toDegrees(cameraToTagRad);
+    }
+
+    /**
+     * Horizontal distance (cm) from the robot's localizer-estimated position to the
+     * alliance tag. Used instead of TY-based LL distance beyond LL_FALLBACK_DISTANCE_CM
+     * where the 360x240 resolution is no longer accurate enough for reliable shooter
+     * compensation. Requires the localizer to have been seeded by at least one close-range
+     * LL fix (localizerCalibrated = true) before this value is trusted.
+     */
+    private double computeLocalizerDistanceCm() {
+        Pose2d pose = localizer.getPose();
+        double dx = LocalizationConfig.BLUE_TAG_FIELD_X - pose.position.x;
+        double dy = LocalizationConfig.BLUE_TAG_FIELD_Y - pose.position.y;
+        return Math.hypot(dx, dy);
     }
 
     /**
@@ -264,9 +380,7 @@ public class TeleOpBlue extends CommandOpMode {
     private void correctLocalizerFromTag(double dist, double txDeg) {
         Pose2d cur = localizer.getPose();
         double robotHeadingRad = cur.heading.toDouble();
-        double turretAngleDeg  = (shooter.getTurretTicks() - turretStartTicks)
-                * LocalizationConfig.TURRET_DEG_PER_TICK
-                * LocalizationConfig.TURRET_ANGLE_SIGN;
+        double turretAngleDeg = shooter.getTurretAngleDeg();
         // Direction from camera to tag in field frame.
         // TX positive = tag right in LL = clockwise = negative in RR (+Y=left).
         double dirRad = robotHeadingRad + Math.toRadians(turretAngleDeg) - Math.toRadians(txDeg);

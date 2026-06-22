@@ -1,13 +1,9 @@
 package org.firstinspires.ftc.teamcode.tools.localization;
 
-import com.qualcomm.hardware.limelightvision.LLResult;
-import com.qualcomm.hardware.limelightvision.LLResultTypes;
 import com.qualcomm.robotcore.util.Range;
 
 import org.firstinspires.ftc.teamcode.configs.LocalizationConfig;
 import org.firstinspires.ftc.teamcode.teleop.subsystems.ShooterSubsystem;
-
-import java.util.List;
 
 /**
  * Drives the turret to keep the assigned AprilTag centred, while protecting
@@ -58,9 +54,9 @@ public class TurretTracker {
      * flip or chase the tag, and commands turret power.
      *
      * @param shooter turret hardware owner
-     * @param tagId   alliance AprilTag to track
+     * @param tx      cached tag TX from ShooterSubsystem.getTrackedTagTx() — null if not seen
      */
-    public void update(ShooterSubsystem shooter, int tagId) {
+    public void update(ShooterSubsystem shooter, Double tx) {
         double angle = getTurretAngleDegrees(shooter);
 
         // ── Full-rotation flip at cable limit ────────────────────────────────
@@ -88,7 +84,6 @@ public class TurretTracker {
         }
 
         // ── Proportional tag centering (centre-to-centre comparison) ─────────
-        Double tx = getTagTx(shooter.getLimelightResult(), tagId);
         if (tx == null) {
             shooter.setTurretPower(0);
             lastPower = 0;
@@ -144,14 +139,4 @@ public class TurretTracker {
         return unwinding;
     }
 
-    /** Horizontal offset (deg) of the requested tag from camera center, or null. */
-    private static Double getTagTx(LLResult result, int tagId) {
-        if (result == null) return null;
-        List<LLResultTypes.FiducialResult> fids = result.getFiducialResults();
-        if (fids == null) return null;
-        for (LLResultTypes.FiducialResult f : fids) {
-            if (f.getFiducialId() == tagId) return f.getTargetXDegrees();
-        }
-        return null;
-    }
 }

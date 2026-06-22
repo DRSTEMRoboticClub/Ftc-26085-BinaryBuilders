@@ -67,10 +67,10 @@ public class LocalizationConfig {
      * Turret cable-protection limit. When |turret angle from start| exceeds
      * this, the tracker unwinds the opposite way instead of continuing.
      */
-    public static double TURRET_FLIP_ANGLE = 180.0;
+    public static double TURRET_FLIP_ANGLE = 20.0;
 
-    /** Hysteresis (deg) below TURRET_FLIP_ANGLE before resuming normal tracking. */
-    public static double TURRET_FLIP_HYSTERESIS = 20.0;
+    /** Hysteresis (deg) — flip drives until (FLIP_ANGLE - HYSTERESIS) on the other side. */
+    public static double TURRET_FLIP_HYSTERESIS = 5.0;
 
     /**
      * Horizontal half-FOV of the Limelight 3A (degrees).
@@ -85,16 +85,9 @@ public class LocalizationConfig {
      * Power at edge = P_GAIN (before MIN_POWER floor and MAX_POWER clip).
      * Equivalent to 0.025 power-per-degree in raw degree space (0.025 * 29.8 ≈ 0.745).
      */
-    public static double TURRET_TRACK_P_GAIN = 0.7;
+    public static double TURRET_TRACK_P_GAIN = 1.4;  // doubled
 
-    /**
-     * Derivative gain in normalised-offset space.
-     * Dampens oscillation: as the turret approaches centre, the normalised offset shrinks
-     * (negative dNorm), which subtracts from the P term and slows the motor before it
-     * overshoots the deadband.
-     * Equivalent to 0.02 power-per-degree-per-loop (0.02 * 29.8 ≈ 0.6).
-     */
-    public static double TURRET_TRACK_D_GAIN = 0.6;
+    public static double TURRET_TRACK_D_GAIN = 1.2;  // doubled
 
     // Flip to +1.0 if TurretTracker moves toward the tag; -1.0 if away (tunable from Dashboard)
     public static double TURRET_TRACK_DIRECTION_SIGN = -1.0;
@@ -102,22 +95,17 @@ public class LocalizationConfig {
     /** Stop correcting when tag is within this many degrees of centre (prevents hunting). */
     public static double TURRET_TRACK_DEADBAND_DEG = 2.5;
 
-    /**
-     * Floor power to overcome BRAKE-mode stiction on the turret motor.
-     * Reduced from 0.15 — with PD control, the D term handles the final approach;
-     * a large floor is what caused the step-discontinuity oscillation.
-     */
-    public static double TURRET_TRACK_MIN_POWER = 0.08;
+    public static double TURRET_TRACK_MIN_POWER = 0.05; // low floor — proportional near centre
 
     /** Max |power| the auto turret tracker will command. */
-    public static double TURRET_TRACK_MAX_POWER = 0.6;
+    public static double TURRET_TRACK_MAX_POWER = 1.0;  // doubled (capped at motor max)
 
     /**
      * Power used during a full-rotation flip.
      * Higher than the old "unwind" power because the flip now travels ~340° (from
      * ±FLIP_ANGLE all the way through 0° to the safe zone on the other side).
      */
-    public static double TURRET_UNWIND_POWER = 0.7;
+    public static double TURRET_UNWIND_POWER = 1.0;
 
     // ============================================================
     // CAMERA / TURRET MOUNTING OFFSETS (robot frame, inches)
