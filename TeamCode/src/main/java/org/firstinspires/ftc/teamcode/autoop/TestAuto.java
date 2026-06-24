@@ -13,46 +13,54 @@ import org.firstinspires.ftc.teamcode.teleop.subsystems.IntakeSubsystem;
 import org.firstinspires.ftc.teamcode.teleop.subsystems.ShooterSubsystem;
 
 /**
- * FSM autonomous that drives the route defined by the original TestAuto path and
- * layers behaviour onto the named field poses:
+ * FSM autonomous that drives the route defined by the original TestAuto path and layers
+ * behaviour onto the named field poses:
  *
- *   - At the SHOOT pose (53, 88): stop and fire (SHOOTING).
- *   - At each ball zone (42, 59) and (19, 59): look for a ball with the Limelight
- *     colour-blob pipeline (SEARCH_BALLS), grab it (INTAKE_BALL), then path back to
- *     the shoot pose and fire again.
+ *   - At the SHOOT pose (53, 88): stop, aim at the goal AprilTag, and fire (SHOOTING).
+ *   - At each ball zone (42, 59) and (19, 59): look for a ball with the Limelight colour-blob
+ *     pipeline (SEARCH_BALLS), grab it (INTAKE_BALL), then path back to the shoot pose and fire.
+ *
+ * Every loop, regardless of state, the turret auto-aims at the goal tag (via the shared
+ * ShooterSubsystem auto-aim) and the flywheel PID is serviced. The flywheel is pre-spun on
+ * the way back to the shoot pose so a shot does not pay a full cold spin-up, and the shot RPM
+ * is taken from the distance polynomial whenever the goal tag is in view.
  *
  * States:
  *   PATHING      — Pedro follows a path segment to a waypoint, then advances.
- *   SHOOTING     — spin the flywheel to target RPM, open the stopper to fire, close, advance.
- *   SEARCH_BALLS — STUB. Switches to the colour pipeline and (for now) immediately
- *                  proceeds. A real vision search will be filled into searchForBall() later.
- *   INTAKE_BALL  — STUB. Drives straight forward while running the intake for a fixed
- *                  time. A smarter ball-tracking version will replace this later.
+ *   SHOOTING     — flywheel to the (distance-compensated) target RPM, open the stopper to
+ *                  fire, close, advance.
+ *   SEARCH_BALLS — STUB. Switches to the colour pipeline and (for now) proceeds immediately.
+ *                  Real vision search goes in searchForBall() later.
+ *   INTAKE_BALL  — STUB. Drives straight forward while running the intake for a fixed time.
+ *                  A smarter ball-tracking version replaces this later.
  *   DONE         — routine finished.
  *
  * Step sequence:
- *   0  PATHING      START (21,119) -> SHOOT (53,88)
- *   1  SHOOTING     fire at (53,88)
- *   2  PATHING      SHOOT (53,88) -> BALL_1 (42,59)
+ *   0  PATHING   START (21,119) -> SHOOT (53,88)   [pre-spin flywheel]
+ *   1  SHOOTING  fire at (53,88)
+ *   2  PATHING   SHOOT (53,88) -> BALL_1 (42,59)
  *   3  SEARCH_BALLS at (42,59)            [stub]
  *   4  INTAKE_BALL  drive forward + intake [stub]
- *   5  PATHING      current pose -> SHOOT (53,88)
- *   6  SHOOTING     fire at (53,88)
- *   7  PATHING      SHOOT (53,88) -> BALL_2 (19,59)
+ *   5  PATHING   current pose -> SHOOT (53,88)     [pre-spin flywheel]
+ *   6  SHOOTING  fire at (53,88)
+ *   7  PATHING   SHOOT (53,88) -> BALL_2 (19,59)
  *   8  SEARCH_BALLS at (19,59)            [stub]
  *   9  INTAKE_BALL  drive forward + intake [stub]
- *  10  PATHING      current pose -> SHOOT (53,88)
- *  11  SHOOTING     fire at (53,88)
+ *  10  PATHING   current pose -> SHOOT (53,88)     [pre-spin flywheel]
+ *  11  SHOOTING  fire at (53,88)
  *  12  DONE
  *
  * All tuning values are @Config (live-editable from FTC Dashboard / Panels).
  */
 @Config
-@Autonomous(name = "Test Auto FSM", group = "Pedro")
+@Autonomous(name = "Test Auto", group = "Pedro")
 public class TestAuto extends LinearOpMode {
 
     // ── Field poses (Pedro coordinates: inches, heading radians) ─────────────
-    private static final double HEADING = Math.toRadians(180);
+    // HEADING is both the robot's start orientation AND the heading every path holds.
+    // Set it to match how the robot is PHYSICALLY placed at the start, or the localizer's
+    // frame is rotated and every path drives off in the wrong direction.
+    private static final double HEADING = Math.toRadians(90);
     private static final Pose START  = new Pose(21.000, 119.000, HEADING);
     private static final Pose SHOOT  = new Pose(53.000, 88.000, HEADING);
     private static final Pose BALL_1 = new Pose(42.000, 59.000, HEADING);
@@ -88,9 +96,13 @@ public class TestAuto extends LinearOpMode {
     private int      step           = 0;
     private long     stateEnteredMs = 0;
 
+    // PATHING sub-state — pre-spin the flywheel while driving to the shoot pose.
+    private boolean spinUpOnPath = false;
+
     // SHOOTING sub-state
-    private boolean shooterFired = false;
-    private long    fireStartMs  = 0;
+    private boolean shooterFired  = false;
+    private long    fireStartMs   = 0;
+    private double  activeShootRpm = 0;
 
     @Override
     public void runOpMode() {
@@ -112,6 +124,11 @@ public class TestAuto extends LinearOpMode {
         enterStep();
 
         while (opModeIsActive() && !isStopRequested()) {
+            // Refresh Limelight + feed heading so the turret can auto-aim and counter-rotate
+            // as the chassis moves. Done before the turret is driven below.
+            shooter.cacheLimelightResult();
+            shooter.setRobotHeading(Math.toDegrees(follower.getPose().getHeading()));
+
             switch (state) {
                 case PATHING:      tickPathing();     break;
                 case SHOOTING:     tickShooting();    break;
@@ -119,8 +136,10 @@ public class TestAuto extends LinearOpMode {
                 case INTAKE_BALL:  tickIntakeBall();  break;
                 case DONE:                            break;
             }
+
             follower.update();
-            shooter.updatePID(); // must run every loop to drive the flywheel PID
+            shooter.runTurretControl(0, false); // auto-aim turret at the goal tag every loop
+            shooter.updatePID();                // service the flywheel PID every loop
             renderTelemetry();
             telemetry.update();
         }
@@ -135,19 +154,19 @@ public class TestAuto extends LinearOpMode {
     private void enterStep() {
         stateEnteredMs = System.currentTimeMillis();
         switch (step) {
-            case 0:  enterPathing(line(START, SHOOT));     break; // -> shoot zone
-            case 1:  enterShooting();                      break; // fire
-            case 2:  enterPathing(line(SHOOT, BALL_1));    break; // -> ball zone 1
-            case 3:  enterSearchBalls();                   break;
-            case 4:  enterIntakeBall();                    break;
-            case 5:  enterPathing(lineFromCurrent(SHOOT)); break; // back to shoot
-            case 6:  enterShooting();                      break; // fire
-            case 7:  enterPathing(line(SHOOT, BALL_2));    break; // -> ball zone 2
-            case 8:  enterSearchBalls();                   break;
-            case 9:  enterIntakeBall();                    break;
-            case 10: enterPathing(lineFromCurrent(SHOOT)); break; // back to shoot
-            case 11: enterShooting();                      break; // fire
-            default: state = FsmState.DONE;                break;
+            case 0:  enterPathing(line(START, SHOOT),     true);  break; // -> shoot, pre-spin
+            case 1:  enterShooting();                             break; // fire
+            case 2:  enterPathing(line(SHOOT, BALL_1),    false); break; // -> ball zone 1
+            case 3:  enterSearchBalls();                          break;
+            case 4:  enterIntakeBall();                           break;
+            case 5:  enterPathing(lineFromCurrent(SHOOT), true);  break; // back to shoot, pre-spin
+            case 6:  enterShooting();                             break; // fire
+            case 7:  enterPathing(line(SHOOT, BALL_2),    false); break; // -> ball zone 2
+            case 8:  enterSearchBalls();                          break;
+            case 9:  enterIntakeBall();                           break;
+            case 10: enterPathing(lineFromCurrent(SHOOT), true);  break; // back to shoot, pre-spin
+            case 11: enterShooting();                             break; // fire
+            default: state = FsmState.DONE;                       break;
         }
     }
 
@@ -158,34 +177,39 @@ public class TestAuto extends LinearOpMode {
 
     // ── PATHING ─────────────────────────────────────────────────────────────
 
-    private void enterPathing(PathChain path) {
+    private void enterPathing(PathChain path, boolean spinUp) {
         state = FsmState.PATHING;
+        spinUpOnPath = spinUp;
         intake.setPower(0);
-        shooter.switchPipeline(ShooterConfig.APRILTAG_PIPELINE);
+        shooter.switchPipeline(ShooterConfig.APRILTAG_PIPELINE); // goal tag tracking
+        if (!spinUp) shooter.setShooterVelocityRpm(0);
         runner.followPath(path);
     }
 
     private void tickPathing() {
+        // Pre-spin the flywheel to the shot RPM while we drive to the shoot pose, so the
+        // shot does not have to wait out a full cold spin-up on arrival.
+        if (spinUpOnPath) shooter.setShooterVelocityRpm(shootTargetRpm());
         if (!runner.isBusy()) advance();
     }
 
     // ── SHOOTING (at the 53,88 shoot pose) ────────────────────────────────────
 
     private void enterShooting() {
-        state        = FsmState.SHOOTING;
-        shooterFired = false;
-        fireStartMs  = 0;
+        state         = FsmState.SHOOTING;
+        shooterFired  = false;
+        fireStartMs   = 0;
+        activeShootRpm = shootTargetRpm();
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
-        shooter.setShooterVelocityRpm(ShooterConfig.MANUAL_TARGET_RPM);
+        shooter.setShooterVelocityRpm(activeShootRpm);
     }
 
     private void tickShooting() {
         long elapsed = System.currentTimeMillis() - stateEnteredMs;
 
         if (!shooterFired) {
-            double actual = shooter.getShooterVelocityRpm();
-            double target = ShooterConfig.MANUAL_TARGET_RPM;
-            boolean atSpeed  = Math.abs(actual - target) < SHOOT_RPM_TOLERANCE;
+            boolean atSpeed  = Math.abs(shooter.getShooterVelocityRpm() - activeShootRpm)
+                    < SHOOT_RPM_TOLERANCE;
             boolean timedOut = elapsed > SHOOT_SPINUP_TIMEOUT_MS;
 
             if (atSpeed || timedOut) {
@@ -200,11 +224,26 @@ public class TestAuto extends LinearOpMode {
         }
     }
 
+    /**
+     * Target flywheel RPM for the current shot: the distance polynomial (with the
+     * distance-ramped boost) when the goal tag is in view, otherwise the manual fallback.
+     */
+    private double shootTargetRpm() {
+        double dist = shooter.getTrackedTagDistanceCm();
+        if (dist > 0) {
+            double d = Math.max(ShooterConfig.MIN_COMP_DISTANCE,
+                    Math.min(dist, ShooterConfig.MAX_COMP_DISTANCE));
+            return ShooterConfig.hoodTuneAngle(d) * ShooterConfig.distanceBoost(d);
+        }
+        return ShooterConfig.MANUAL_TARGET_RPM;
+    }
+
     // ── SEARCH_BALLS (STUB) ───────────────────────────────────────────────────
 
     private void enterSearchBalls() {
         state = FsmState.SEARCH_BALLS;
         intake.setPower(0);
+        shooter.setShooterVelocityRpm(0);
         // Arm the colour-blob pipeline so the real search has data when implemented.
         shooter.switchPipeline(COLOR_PIPELINE);
     }
@@ -274,10 +313,13 @@ public class TestAuto extends LinearOpMode {
         telemetry.addData("Pose", "(%.1f, %.1f) %.0f deg",
                 p.getX(), p.getY(), Math.toDegrees(p.getHeading()));
         telemetry.addData("Following", runner.isBusy());
+        telemetry.addData("Turret", "%.1f deg  tag dist %.0f cm",
+                shooter.getTurretAngleDeg(), shooter.getTrackedTagDistanceCm());
 
-        if (state == FsmState.SHOOTING) {
+        if (state == FsmState.SHOOTING || (state == FsmState.PATHING && spinUpOnPath)) {
             telemetry.addData("Shooter RPM", "%.0f / %.0f",
-                    shooter.getShooterVelocityRpm(), ShooterConfig.MANUAL_TARGET_RPM);
+                    shooter.getShooterVelocityRpm(),
+                    state == FsmState.SHOOTING ? activeShootRpm : shootTargetRpm());
             telemetry.addData("Fired", shooterFired);
         }
         if (state == FsmState.INTAKE_BALL) {

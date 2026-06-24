@@ -64,13 +64,25 @@ public class LocalizationConfig {
     public static double TURRET_ANGLE_SIGN = 1.0;
 
     /**
+     * Heading feed-forward gain for turret tracking. When the chassis rotates, the tag's
+     * bearing relative to the robot changes by the same amount, so the turret must counter-
+     * rotate to stay on target. This feeds the robot's heading change (since the last
+     * Limelight read) straight into the turret aim — the turret keeps tracking through fast
+     * chassis turns instead of falling behind and losing the tag.
+     * 1.0 = exact 1:1 counter-rotation (correct when turret angle and IMU heading are both
+     * CCW-positive and the turret reads true degrees). Flip the sign if the turret turns the
+     * wrong way during a chassis spin; set 0 to disable the feed-forward entirely.
+     */
+    public static double TURRET_HEADING_FF_GAIN = 1.0;
+
+    /**
      * Turret cable-protection limit. When |turret angle from start| exceeds
      * this, the tracker unwinds the opposite way instead of continuing.
      */
-    public static double TURRET_FLIP_ANGLE = 20.0;
+    public static double TURRET_FLIP_ANGLE = 155.0;
 
     /** Hysteresis (deg) — flip drives until (FLIP_ANGLE - HYSTERESIS) on the other side. */
-    public static double TURRET_FLIP_HYSTERESIS = 5.0;
+    public static double TURRET_FLIP_HYSTERESIS = 15.0;
 
     /**
      * Horizontal half-FOV of the Limelight 3A (degrees).

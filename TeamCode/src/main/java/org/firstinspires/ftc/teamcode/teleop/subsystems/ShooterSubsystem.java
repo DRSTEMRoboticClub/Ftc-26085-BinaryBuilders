@@ -10,6 +10,8 @@ import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.Range;
+import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.Pose3D;
 import org.firstinspires.ftc.teamcode.configs.HardwareConfig;
 import org.firstinspires.ftc.teamcode.configs.LocalizationConfig;
 import org.firstinspires.ftc.teamcode.configs.ShooterConfig;
@@ -47,6 +49,26 @@ public class ShooterSubsystem extends SubsystemBase {
     // Encoder snapshot at each LL read — lets runTurretControl estimate the real-time TX
     // between 500ms LL windows so the PID doesn't drive blind and overshoot the tag.
     private int turretTicksAtLLUpdate = 0;
+    // Robot heading (deg): snapshot at each LL read, the heading frozen at the last actual
+    // tag sighting, and the live heading fed in each loop. (currentHeading - headingAtTagSeen)
+    // is how far the chassis has rotated since the tag was last seen — added into the turret
+    // aim so it counter-rotates and holds the tag through fast chassis turns, and keeps the
+    // search target moving correctly while the tag is out of view.
+    private double headingAtLLUpdate = Double.NaN;
+    private double headingAtTagSeen = Double.NaN;
+    private double currentRobotHeadingDeg = Double.NaN;
+
+    // ── Tag-direction memory + cable-flip state ───────────────────────────────
+    // Absolute turret angle (deg from start) that would centre the tracked tag, recorded
+    // every loop the tag is actually seen. When the tag leaves the camera view, the turret
+    // slews back toward this remembered angle to re-find it (decelerating as it arrives),
+    // instead of freezing. NaN = no tag has been seen yet.
+    private double tagMemoryAngle = Double.NaN;
+    // Cable protection: the aim target is clamped to ±TURRET_FLIP_ANGLE so the turret never
+    // winds past the limit. turretAtLimit is true (telemetry only) when the tag's true bearing
+    // is beyond the limit, i.e. the turret is pinned at the limit / swinging the long way round.
+    private boolean turretAtLimit = false;
+    private boolean turretSearching = false; // telemetry: true when slewing to reacquire
 
     // One Limelight result per loop — call cacheLimelightResult() at loop start.
     // TX, distance, and visible-IDs are pre-extracted into primitives so every getter
@@ -161,27 +183,14 @@ public class ShooterSubsystem extends SubsystemBase {
             }
         }
 
+        // ── Throttled read — camera stays running continuously ───────────────────
+        // The camera/pipeline runs the whole time so the AprilTag detector actually settles
+        // and keeps reporting tags; we just sample getLatestResult() at a fixed rate to cap
+        // object churn. (The old scheme stopped the camera and re-switched the pipeline every
+        // 500 ms, which reloaded the detector constantly — the LL would flash green on a tag
+        // but our brief read window kept coming back empty. That is fixed by not stopping it.)
         long now = System.currentTimeMillis();
-        long elapsed = now - lastLLUpdateMs;
-
-        // ── Duty-cycle schedule (500 ms total, 50 ms active) ─────────────────────
-        // The SDK background thread is stopped for 450 ms of every 500 ms cycle.
-        // During the 50 ms window at the end it runs and gets ~2 frames at 40 fps.
-        // That is ~4 LLResult objects / second — down from 40/s without stop/start.
-        // The pipeline re-arm after each stop also nudges the LL to flush its internal
-        // result history, which is the likely source of the slow queue accumulation.
-        if (!llPolling && elapsed >= 450) {
-            try { limelight.start(); llPolling = true; } catch (Throwable ignored) { }
-        }
-
-        if (elapsed < 500) return;
-
-        // ── Read window ──────────────────────────────────────────────────────────
-        if (!llPolling) {
-            // Slow-loop fallback: missed the pre-start window; grab whatever is buffered.
-            try { limelight.start(); llPolling = true; } catch (Throwable ignored) { }
-        }
-
+        if (now - lastLLUpdateMs < ShooterConfig.LL_READ_INTERVAL_MS) return;
         lastLLUpdateMs = now;
         resultIsNew = true;
         try {
@@ -196,21 +205,15 @@ public class ShooterSubsystem extends SubsystemBase {
                 cachedDistCm = -1.0;
                 cachedVisibleTagIds = "none";
             }
-            // Snapshot encoder position so runTurretControl can estimate real-time TX
-            // between LL updates (see encoder-compensation comment there).
+            // Snapshot encoder position + robot heading so runTurretControl can estimate the
+            // real-time TX between LL updates (turret + chassis rotation since this read).
             turretTicksAtLLUpdate = getTurretTicks();
+            headingAtLLUpdate = currentRobotHeadingDeg;
             // Release the raw result reference immediately so it is GC-eligible as soon as
             // the SDK also drops its internal reference. In auto modes (retainCachedResult=true)
             // keep it alive for AprilTagLocalizer, which needs it until applyAprilTagCorrection().
             if (!retainCachedResult) cachedResult = null;
-
-            // Stop the polling thread; re-arm the pipeline to flush the LL's internal
-            // result buffer. Both calls are best-effort (SDK state stays consistent on throw).
-            try { limelight.stop(); llPolling = false; } catch (Throwable ignored) { }
-            try { limelight.pipelineSwitch(ShooterConfig.APRILTAG_PIPELINE); } catch (Throwable ignored) { }
-        } catch (Throwable t) {
-            llPolling = false;
-        }
+        } catch (Throwable ignored) { }
     }
 
     /**
@@ -365,6 +368,23 @@ public class ShooterSubsystem extends SubsystemBase {
         externalTurretControl = external;
     }
 
+    /**
+     * Feed the robot's current heading (degrees, CCW+) in once per loop, before
+     * runTurretControl(). Used for the heading feed-forward that keeps the turret on the tag
+     * while the chassis is rotating. Safe to omit — the turret just falls back to LL-only
+     * tracking if it is never called.
+     */
+    public void setRobotHeading(double headingDeg) {
+        currentRobotHeadingDeg = headingDeg;
+    }
+
+    /** Wrap an angle difference into (-180, 180] degrees. */
+    private static double normalizeDeg(double deg) {
+        while (deg >  180.0) deg -= 360.0;
+        while (deg <= -180.0) deg += 360.0;
+        return deg;
+    }
+
     public double getLastTurretPower() {
         return lastTurretPower;
     }
@@ -384,7 +404,7 @@ public class ShooterSubsystem extends SubsystemBase {
         if (externalTurretControl) {
             // TurretTracker owns auto-aim in LocalSysBase — only override on explicit D-pad.
             if (Math.abs(manualPower) > 0.01) {
-                double power = manualPower * ShooterConfig.TURRET_POWER_SCALE;
+                double power = applyCableLimit(manualPower * ShooterConfig.TURRET_POWER_SCALE);
                 lastTurretPower = power;
                 turretRotation.setPower(power);
             }
@@ -397,79 +417,156 @@ public class ShooterSubsystem extends SubsystemBase {
             // a manual move (stale lastNorm + large dt = huge derivative kick).
             turretPidActive = false;
             turretPidIntegral = 0.0;
-            double power = manualPower * ShooterConfig.TURRET_POWER_SCALE;
+            turretSearching = false;
+            double power = applyCableLimit(manualPower * ShooterConfig.TURRET_POWER_SCALE);
             lastTurretPower = power;
             turretRotation.setPower(power);
             return;
         }
 
-        // ── PID auto-aim (only while LL has a live fix on the tracked tag) ───────
+        // ── PID auto-aim, with heading feed-forward and search-to-reacquire ───────
         double power = 0;
+        turretSearching = false;
+        turretAtLimit = false;
         if (autoAimEnabled) {
-            // Encoder-compensated TX: the LL cache is 500ms, so cachedTxDeg is stale
-            // between reads. As the turret physically rotates toward the tag, the tag
-            // appears to move in the opposite direction in the camera frame.
+            // The error fed to the PID is the tag's offset from camera-centre (degrees),
+            // reconstructed live even though the LL only reports every LL_READ_INTERVAL_MS.
+            // It is built from three pieces, all in the same CCW-positive degree convention:
             //
-            // When the turret rotates CCW by Δ° (TURRET_ANGLE_SIGN convention: CCW = +),
-            // the camera moves left and the tag appears to shift RIGHT → TX increases by Δ.
-            // So: estimatedTx = cachedTxDeg + turretAngleChangeSinceRead
+            //   error = cachedTx                         (offset at the last LL read)
+            //         + (turretAngleNow - turretAtRead)  (turret rotated since the read)
+            //         + (headingNow      - headingAtRead)*FF_GAIN   (CHASSIS rotated since read)
             //
-            // This gives the PID live feedback between LL updates, so it actually decelerates
-            // as it approaches the tag instead of driving blind at constant power.
-            Double tx = null;
+            // The chassis term is the fix for "turn too fast and it stops tracking": when the
+            // robot spins, the camera spins with it, so the tag races across the frame. Feeding
+            // the heading change straight in lets the turret counter-rotate immediately instead
+            // of waiting for the next LL frame (by which point the tag is gone).
+            //
+            // When the tag is currently visible we re-anchor tagMemoryAngle to it. When it is
+            // NOT visible we keep driving toward that remembered direction (still heading-
+            // compensated), so a tag knocked out of view by a fast turn is chased back in.
+            Double error = null;
+            boolean searching = false;
+
             if (!Double.isNaN(cachedTxDeg)) {
+                // Tag visible: re-anchor the remembered robot-relative tag angle to this read,
+                // and freeze the heading reference at this sighting.
                 int deltaTicks = getTurretTicks() - turretTicksAtLLUpdate;
-                double deltaAngle = deltaTicks
+                double deltaTurret = deltaTicks
                         * LocalizationConfig.TURRET_DEG_PER_TICK
                         * LocalizationConfig.TURRET_ANGLE_SIGN;
-                // Cap compensation: aggressive robot turns drag the braked turret, making
-                // deltaAngle large and giving a wildly wrong estimated TX. A tag can only
-                // appear to shift ~half-FOV between 500ms updates during normal tracking.
-                deltaAngle = Range.clip(deltaAngle,
-                        -ShooterConfig.CAMERA_HALF_FOV_DEG,
-                         ShooterConfig.CAMERA_HALF_FOV_DEG);
-                tx = cachedTxDeg + deltaAngle;
+                deltaTurret = Range.clip(deltaTurret,
+                        -ShooterConfig.CAMERA_HALF_FOV_DEG, ShooterConfig.CAMERA_HALF_FOV_DEG);
+                // Robot-relative turret angle that centred the tag at read time
+                // ( angleAtRead - tx, where angleAtRead = angleNow - turretMotionSinceRead ).
+                tagMemoryAngle = (getTurretAngleDeg() - deltaTurret) - cachedTxDeg;
+                headingAtTagSeen = headingAtLLUpdate;
             }
-            if (tx != null && Math.abs(tx) > ShooterConfig.AUTO_AIM_DEADBAND_DEG) {
-                double norm = Range.clip(tx / ShooterConfig.CAMERA_HALF_FOV_DEG, -1.0, 1.0);
 
-                long nowNs = System.nanoTime();
+            // How far the chassis has rotated since the tag was last actually seen. Measured
+            // from the sighting (not the last read) so it stays correct during a long search.
+            double headingComp = 0.0;
+            if (!Double.isNaN(currentRobotHeadingDeg) && !Double.isNaN(headingAtTagSeen)) {
+                headingComp = normalizeDeg(currentRobotHeadingDeg - headingAtTagSeen)
+                        * LocalizationConfig.TURRET_HEADING_FF_GAIN;
+            }
+
+            if (!Double.isNaN(tagMemoryAngle)) {
+                // Live aim target = remembered angle, shifted by how far the chassis has turned
+                // since the sighting, wrapped to a true bearing, then CLAMPED to the cable limit.
+                // Clamping makes the PID decelerate INTO the limit instead of chasing the tag
+                // past it (the counter-rotation bug that wound the cable past the limit). When
+                // the tag crosses the rear dead zone the wrapped bearing flips to the far side,
+                // so the PID then swings the long way round — always staying within the limit.
+                double lim = LocalizationConfig.TURRET_FLIP_ANGLE;
+                double target = normalizeDeg(tagMemoryAngle - headingComp);
+                double clamped = Range.clip(target, -lim, lim);
+                turretAtLimit = (clamped != target);
+                // NOTE: error is intentionally NOT wrapped — when the turret is pinned at one
+                // limit and the target is at the other, the large unwrapped error drives it the
+                // long way round (through 0) rather than the short way across the limit.
+                error = getTurretAngleDeg() - clamped;
+                searching = Double.isNaN(cachedTxDeg); // no live tag this read → reacquiring
+            }
+
+            if (error != null && Math.abs(error) > ShooterConfig.AUTO_AIM_DEADBAND_DEG) {
+                double norm = Range.clip(error / ShooterConfig.CAMERA_HALF_FOV_DEG, -1.0, 1.0);
+
+                // Searching uses P only — a clean decelerating glide back to the remembered
+                // direction, no integral/derivative (which would wind up or kick on reacquire).
                 double derivative = 0.0;
-                if (turretPidActive) {
-                    double dt = Math.min((nowNs - turretPidLastTimeNs) / 1e9, 0.2);
-                    if (dt > 0) {
-                        derivative = (norm - turretPidLastNorm) / dt;
-                        turretPidIntegral += norm * dt;
-                        // Anti-windup: clamp so integral alone can't saturate the output.
-                        turretPidIntegral = Range.clip(turretPidIntegral, -1.0, 1.0);
+                if (!searching) {
+                    long nowNs = System.nanoTime();
+                    if (turretPidActive) {
+                        double dt = Math.min((nowNs - turretPidLastTimeNs) / 1e9, 0.2);
+                        if (dt > 0) {
+                            derivative = (norm - turretPidLastNorm) / dt;
+                            turretPidIntegral += norm * dt;
+                            turretPidIntegral = Range.clip(turretPidIntegral, -1.0, 1.0);
+                        }
                     }
+                    turretPidLastNorm = norm;
+                    turretPidLastTimeNs = nowNs;
+                    turretPidActive = true;
+                } else {
+                    turretPidActive = false;
+                    turretPidIntegral = 0.0;
                 }
-                turretPidLastNorm = norm;
-                turretPidLastTimeNs = nowNs;
-                turretPidActive = true;
 
-                double pid = (norm                * ShooterConfig.AUTO_AIM_P_GAIN
-                            + turretPidIntegral   * ShooterConfig.AUTO_AIM_I_GAIN
-                            + derivative          * ShooterConfig.AUTO_AIM_D_GAIN)
+                double pid = (norm              * ShooterConfig.AUTO_AIM_P_GAIN
+                            + turretPidIntegral * ShooterConfig.AUTO_AIM_I_GAIN
+                            + derivative        * ShooterConfig.AUTO_AIM_D_GAIN)
                            * ShooterConfig.AUTO_AIM_DIRECTION_SIGN;
                 power = Range.clip(pid, -ShooterConfig.AUTO_AIM_MAX_POWER, ShooterConfig.AUTO_AIM_MAX_POWER);
                 if (Math.abs(power) > 0 && Math.abs(power) < ShooterConfig.AUTO_AIM_MIN_POWER) {
                     power = Math.signum(power) * ShooterConfig.AUTO_AIM_MIN_POWER;
                 }
-            } else if (tx == null) {
-                // No tag — hold position, let D-pad move freely. PID stays dormant.
+                turretSearching = searching;
+            } else {
+                // Centred on the tag (or on the remembered direction) — hold.
                 turretPidActive = false;
                 turretPidIntegral = 0.0;
             }
         }
 
+        power = applyCableLimit(power);
         lastTurretPower = power;
         turretRotation.setPower(power);
+    }
+
+    /**
+     * Hard cable-protection stop. The turret may travel only within ±TURRET_FLIP_ANGLE of its
+     * start; winding past that strangles the cable. The auto-aim already clamps its aim target
+     * to the limit (so it decelerates into it and never chases past), so this is a final safety
+     * net — mainly for manual D-pad: it refuses any command that would drive further past the
+     * limit. Returning toward the safe zone is always allowed.
+     *
+     * @param desired the power the controller wants to apply this loop
+     * @return the power to actually send to the motor (0 if it would push past the limit)
+     */
+    private double applyCableLimit(double desired) {
+        double angle = getTurretAngleDeg();
+        double lim   = LocalizationConfig.TURRET_FLIP_ANGLE;
+        // Positive power increases the turret angle (CCW per ANGLE_SIGN).
+        if (angle >=  lim && desired > 0) return 0;   // at + limit, pushing further + → stop
+        if (angle <= -lim && desired < 0) return 0;   // at - limit, pushing further - → stop
+        return desired;
     }
 
     /** Horizontal distance (cm) to the tracked tag. Pre-computed in cacheLimelightResult(). */
     public double getTrackedTagDistanceCm() {
         return cachedDistCm;
+    }
+
+    /** True when the turret is slewing back toward the last-seen tag direction (tag out of view). */
+    public boolean isTurretSearching() {
+        return turretSearching;
+    }
+
+    /** True when the tag's bearing is beyond the cable limit — turret is pinned at the limit
+     *  (or swinging the long way to the far side). */
+    public boolean isTurretAtLimit() {
+        return turretAtLimit;
     }
 
     private double extractDistanceCm(LLResult result) {
@@ -478,6 +575,21 @@ public class ShooterSubsystem extends SubsystemBase {
             if (fids == null) return -1;
             for (LLResultTypes.FiducialResult f : fids) {
                 if (f.getFiducialId() != ShooterConfig.TRACKED_TAG_ID) continue;
+
+                // Primary: AprilTag 3D solver distance, straight from the tag pose in camera
+                // space. Robust — does not depend on hand-measured camera/tag heights or tilt,
+                // and it is already computed by the pipeline (just a field read, no extra cost).
+                // This is why the tag could be "clearly in view" yet show no distance: the TY
+                // geometry below silently failed whenever the measured heights didn't match.
+                Pose3D camSpace = f.getTargetPoseCameraSpace();
+                if (camSpace != null && camSpace.getPosition() != null) {
+                    double xRight = camSpace.getPosition().toUnit(DistanceUnit.CM).x; // +right (cm)
+                    double zFwd   = camSpace.getPosition().toUnit(DistanceUnit.CM).z; // +forward (cm)
+                    double d = Math.hypot(xRight, zFwd);
+                    if (d > 0 && !Double.isNaN(d) && !Double.isInfinite(d)) return d;
+                }
+
+                // Fallback: TY geometry (needs CAMERA_HEIGHT_CM / TAG_CENTER_HEIGHT_CM / TILT).
                 double ty         = f.getTargetYDegrees();
                 double heightDiff = ShooterConfig.TAG_CENTER_HEIGHT_CM - ShooterConfig.CAMERA_HEIGHT_CM;
                 double angleDeg   = ShooterConfig.CAMERA_TILT_DEG + ty;

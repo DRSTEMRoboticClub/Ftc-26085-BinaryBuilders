@@ -190,6 +190,10 @@ public class TeleOpBlue extends CommandOpMode {
                 // BEFORE inputHandler runs updatePID(), so the custom velocity PID uses it.
                 double compDist = applyShooterCompensation(effectiveDist);
 
+                // Feed live heading to the turret so it counter-rotates during chassis turns
+                // (heading feed-forward). Must run before inputHandler -> runTurretControl().
+                shooter.setRobotHeading(drive.getHeading());
+
                 inputHandler.update(drive, intake, shooter, hood);
 
                 // Distance compensation (POST): actually drive the hood servo to the polynomial
@@ -251,12 +255,11 @@ public class TeleOpBlue extends CommandOpMode {
         if (effectiveDist > 0) {
             double d = Math.max(ShooterConfig.MIN_COMP_DISTANCE,
                     Math.min(effectiveDist, ShooterConfig.MAX_COMP_DISTANCE));
-            double polyRpm  = ShooterConfig.hoodTuneAngle(d);
-            double boost    = effectiveDist <= ShooterConfig.LL_FALLBACK_DISTANCE_CM
-                    ? ShooterConfig.POLY_RPM_BOOST : 1.0;
+            double polyRpm   = ShooterConfig.hoodTuneAngle(d);
+            double boost     = ShooterConfig.distanceBoost(d);
             double targetRpm = polyRpm * boost;
-            telemetry.addLine(String.format("Poly %.0fcm poly=%.0f boost=%.0f | act=%.0f raw=%.0f t/s",
-                    d, polyRpm, targetRpm,
+            telemetry.addLine(String.format("Poly %.0fcm poly=%.0f x%.2f=%.0f | act=%.0f raw=%.0f t/s",
+                    d, polyRpm, boost, targetRpm,
                     shooter.getShooterVelocityRpm(), shooter.getRawLauncherTicksPerSec()));
             telemetry.addLine(String.format("Hood poly=%.2f actual=%.2f | CPR=%d",
                     ShooterConfig.hoodPitch(d), hood.getPosition(),
@@ -268,14 +271,18 @@ public class TeleOpBlue extends CommandOpMode {
         }
 
         Pose2d pose = localizer.getPose();
-        String turretSrc = !shooter.isAutoAimEnabled() ? "MAN"
-                : usingLocFallback              ? "LOC"
-                : shooter.getTrackedTagTx() != null ? "LL"
-                : "DR";
+        String turretSrc = !shooter.isAutoAimEnabled()       ? "MAN"
+                : shooter.isTurretAtLimit()                  ? "LIMIT"
+                : shooter.isTurretSearching()                ? "SEEK"
+                : shooter.getTrackedTagTx() != null          ? "LL"
+                : "HOLD";
         double turretAngleDeg = shooter.getTurretAngleDeg();
-        telemetry.addLine(String.format("Turret %.2f %s | %.1f° (ticks %d)",
+        String limitWarn = Math.abs(turretAngleDeg) >= LocalizationConfig.TURRET_FLIP_ANGLE * 0.85
+                ? " !LIMIT!" : "";
+        telemetry.addLine(String.format("Turret %.2f %s | %.1f° (ticks %d) flip@%.0f°%s",
                 shooter.getLastTurretPower(), turretSrc,
-                turretAngleDeg, shooter.getTurretTicks()));
+                turretAngleDeg, shooter.getTurretTicks(),
+                LocalizationConfig.TURRET_FLIP_ANGLE, limitWarn));
         telemetry.addLine(String.format("Pose %.0f,%.0f H%.0f | P=%.2f I=%.2f D=%.2f",
                 pose.position.x, pose.position.y, drive.getHeading(),
                 ShooterConfig.AUTO_AIM_P_GAIN, ShooterConfig.AUTO_AIM_I_GAIN, ShooterConfig.AUTO_AIM_D_GAIN));
@@ -314,12 +321,10 @@ public class TeleOpBlue extends CommandOpMode {
                 || gamepad1.left_bumper
                 || gamepad1.right_trigger > ControlsConfig.TRIGGER_THRESHOLD;
         if (wantShoot) {
-            // Only apply the RPM boost at close range where the polynomial under-compensates.
-            // Beyond LL_FALLBACK_DISTANCE_CM the polynomial is already accurate; the boost
-            // overshoots badly at long range.
-            double boost = dist <= ShooterConfig.LL_FALLBACK_DISTANCE_CM
-                    ? ShooterConfig.POLY_RPM_BOOST : 1.0;
-            shooter.setAutoShootRpmOverride(ShooterConfig.hoodTuneAngle(d) * boost);
+            // Distance-ramped boost: strongest up close where the polynomial under-shoots,
+            // fading to none far out where it is already accurate.
+            shooter.setAutoShootRpmOverride(ShooterConfig.hoodTuneAngle(d)
+                    * ShooterConfig.distanceBoost(d));
         } else {
             shooter.clearAutoShootRpmOverride();
         }

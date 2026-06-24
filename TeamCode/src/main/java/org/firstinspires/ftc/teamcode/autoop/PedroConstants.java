@@ -47,7 +47,10 @@ public class PedroConstants {
      * the old 0.0227 in/tick constant → 0.0227 × (24/37) = 0.01472 cm/tick.
      * Push the robot exactly one tile (61 cm) and scale until the reading is 61.
      */
-    public static double FORWARD_TICKS_TO_INCHES = 0.015460345; // cm/tick — calibrated (61cm actual, ~58cm reported)
+    // NEGATIVE to invert the forward/X axis — the auto drove to the bottom-LEFT instead of
+    // bottom-RIGHT (Y correct, X mirrored). Negating the forward scale flips only the X axis,
+    // leaving strafe (Y) and turn (heading) untouched. Magnitude unchanged. @Config-tunable.
+    public static double FORWARD_TICKS_TO_INCHES = -0.015460345; // cm/tick — calibrated (61cm actual, ~58cm reported)
     /** cm per tick sideways — mecanum slip makes this less than forward. */
     public static double STRAFE_TICKS_TO_INCHES = 0.016918868; // cm/tick — calibrated (61cm actual, 53cm reported)
     /** cm per tick for rotation — 2× forward to correct the 180°→90° heading halving. */
@@ -63,10 +66,14 @@ public class PedroConstants {
      * the robot forward and flip any sign whose wheel makes X go the wrong way;
      * then strafe left and fix Y the same way.
      */
-    public static double LF_ENCODER_DIR = 1.0;
-    public static double RF_ENCODER_DIR = -1.0;
-    public static double LR_ENCODER_DIR = 1.0;
-    public static double RR_ENCODER_DIR = -1.0;
+    // All four flipped from the previous (1,-1,1,-1) — the auto drove directly opposite to
+    // its target, i.e. the localizer was reporting motion the wrong way (inverted feedback).
+    // Flipping all four inverts the sensed X, Y AND heading together. These are @Config, so
+    // verify/adjust live on Dashboard with "Pedro Localization Test" (push fwd -> X up, etc.).
+    public static double LF_ENCODER_DIR = -1.0;
+    public static double RF_ENCODER_DIR = 1.0;
+    public static double LR_ENCODER_DIR = -1.0;
+    public static double RR_ENCODER_DIR = 1.0;
 
     // ============================================================
     // DRIVETRAIN — motor directions + feedforward velocities

@@ -15,12 +15,14 @@ public class ShooterConfig {
     // Gains act on normalised TX: norm = tx / CAMERA_HALF_FOV_DEG → [-1, +1]
     // TX is encoder-compensated between LL updates so the PID sees live error, not stale.
     // Start here and tune P up if tracking is too sluggish, D up if it overshoots.
-    public static double AUTO_AIM_P_GAIN = 0.8;
+    public static double AUTO_AIM_P_GAIN = 1.2;    // raised: with the 45:1 turret reduction the
+                                                   // motor must drive harder for the same tracking speed
     public static double AUTO_AIM_I_GAIN = 0.0;    // raise to ~0.05 if turret consistently stops short
     public static double AUTO_AIM_D_GAIN = 0.3;    // time-based (power per normalised-error/s)
     public static double AUTO_AIM_DEADBAND_DEG = 2.5;
     public static double AUTO_AIM_MIN_POWER = 0.05;
-    public static double AUTO_AIM_MAX_POWER = 0.5;
+    public static double AUTO_AIM_MAX_POWER = 0.9;  // raised: 45:1 reduction caps turret speed anyway,
+                                                    // so use most of the motor instead of half of it
 
     // Step size per G2 D-pad click when tuning AUTO_AIM_P_GAIN live
     public static double AUTO_AIM_P_TUNE_STEP = 0.05;
@@ -30,9 +32,31 @@ public class ShooterConfig {
     public static int TRACKED_TAG_ID = 20; // Blue alliance hub tag; Red = 24
     public static int APRILTAG_PIPELINE = 0;
 
-    // Multiplier applied on top of the polynomial RPM target.
-    // 1.07 = 7 % boost — enough to reliably clear 3 rings; tune via FTC Dashboard.
-    public static double POLY_RPM_BOOST = 1.0;
+    // How often (ms) cacheLimelightResult() samples the Limelight. The camera runs
+    // continuously; this only rate-limits our getLatestResult() reads. 100 ms = 10 Hz,
+    // plenty for tracking (the turret encoder-compensates between reads). Tune via Dashboard.
+    public static long LL_READ_INTERVAL_MS = 100;
+
+    // ── Distance-ramped RPM boost ────────────────────────────────────────────
+    // Extra multiplier on the polynomial RPM target that is strongest at close range and
+    // fades to a small floor far out. The polynomial under-shoots up close (big boost) and
+    // also a little at long range (small boost) where it otherwise lands short.
+    //   dist <= BOOST_NEAR_DIST            → full boost (BOOST_MAX_FACTOR)
+    //   BOOST_NEAR_DIST .. BOOST_FAR_DIST  → linearly fades from BOOST_MAX_FACTOR to BOOST_FAR_FACTOR
+    //   dist >= BOOST_FAR_DIST             → far-range floor (BOOST_FAR_FACTOR)
+    // All are @Config so the curve can be tuned live from FTC Dashboard.
+    public static double BOOST_MAX_FACTOR = 1.06;   // 6 % boost at/under BOOST_NEAR_DIST
+    public static double BOOST_FAR_FACTOR = 1.02;   // 2 % boost held at/beyond BOOST_FAR_DIST
+    public static double BOOST_NEAR_DIST  = 200.0;  // cm — full boost held out to 200cm (needs it for all 3 balls)
+    public static double BOOST_FAR_DIST   = 250.0;  // cm — ~max range; boost reaches the far floor here
+
+    /** Distance-dependent RPM multiplier (see BOOST_* fields). */
+    public static double distanceBoost(double d) {
+        if (d <= BOOST_NEAR_DIST) return BOOST_MAX_FACTOR;
+        if (d >= BOOST_FAR_DIST)  return BOOST_FAR_FACTOR;
+        double t = (d - BOOST_NEAR_DIST) / (BOOST_FAR_DIST - BOOST_NEAR_DIST);
+        return BOOST_MAX_FACTOR + t * (BOOST_FAR_FACTOR - BOOST_MAX_FACTOR);
+    }
 
     // Distance threshold (cm) below which raw LL TX / TY measurements are used for turret
     // tracking and shooter compensation. Beyond this the localizer field position takes over:
