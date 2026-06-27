@@ -167,19 +167,30 @@ public class PriorityInputHandler {
 
         long now = System.currentTimeMillis();
 
-        // Turret auto-aim P-gain tuning — G2 D-pad Up/Down (rate-limited, same as RPM tune)
-        // Up = more aggressive tracking, Down = softer. Current value shown in telemetry.
+        // ── Manual shooter + hood tuning on G2 (distance polynomial is off) ──────
+        // Hood pitch — G2 D-pad Up/Down (rate-limited so a held button doesn't slam the servo).
+        // Same direction convention as the G1 hood control below (up = -increment).
         if (shouldStep("g2_dpad_up", g2.gamepad.dpad_up,
                 g2.wasJustPressed(GamepadKeys.Button.DPAD_UP), now)) {
-            ShooterConfig.AUTO_AIM_P_GAIN = Math.min(2.0,
-                    ShooterConfig.AUTO_AIM_P_GAIN + ShooterConfig.AUTO_AIM_P_TUNE_STEP);
+            hood.adjustPosition(-HoodConfig.HOOD_INCREMENT);
         } else if (shouldStep("g2_dpad_down", g2.gamepad.dpad_down,
                 g2.wasJustPressed(GamepadKeys.Button.DPAD_DOWN), now)) {
-            ShooterConfig.AUTO_AIM_P_GAIN = Math.max(0.0,
-                    ShooterConfig.AUTO_AIM_P_GAIN - ShooterConfig.AUTO_AIM_P_TUNE_STEP);
+            hood.adjustPosition(HoodConfig.HOOD_INCREMENT);
         }
 
-        // Hood pitch — G1 D-pad Up/Down (rate-limited; without shouldStep the servo
+        // Target shooter RPM ("turret power") — G2 D-pad Right/Left, in steps of 50 RPM.
+        // This is the speed the flywheel PID spins up to when the trigger / hold is active.
+        if (shouldStep("g2_dpad_right", g2.gamepad.dpad_right,
+                g2.wasJustPressed(GamepadKeys.Button.DPAD_RIGHT), now)) {
+            ShooterConfig.MANUAL_TARGET_RPM = Math.min(ShooterConfig.MAX_LAUNCHER_RPM,
+                    ShooterConfig.MANUAL_TARGET_RPM + 50.0);
+        } else if (shouldStep("g2_dpad_left", g2.gamepad.dpad_left,
+                g2.wasJustPressed(GamepadKeys.Button.DPAD_LEFT), now)) {
+            ShooterConfig.MANUAL_TARGET_RPM = Math.max(0.0,
+                    ShooterConfig.MANUAL_TARGET_RPM - 50.0);
+        }
+
+        // Hood pitch (secondary) — G1 D-pad Up/Down (rate-limited; without shouldStep the servo
         // would receive ~100 adjustPosition calls/sec while held, slamming to the limit)
         if (shouldStep("g1_dpad_up", g1.gamepad.dpad_up,
                 g1.wasJustPressed(GamepadKeys.Button.DPAD_UP), now)) {

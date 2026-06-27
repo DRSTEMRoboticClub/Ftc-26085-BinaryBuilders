@@ -196,9 +196,9 @@ public class TeleOpBlue extends CommandOpMode {
 
                 inputHandler.update(drive, intake, shooter, hood);
 
-                // Distance compensation (POST): actually drive the hood servo to the polynomial
-                // pitch. inputHandler's D-pad already ran, so auto wins whenever a tag is in view.
-                if (compDist > 0) {
+                // Hood control: auto mode (X=off) → polynomial from distance;
+                // manual mode (X=on) → G2 D-pad only (inputHandler already ran above).
+                if (!inputHandler.isManualMode() && compDist > 0) {
                     hood.setPosition(ShooterConfig.hoodPitch(compDist));
                 }
 
@@ -233,8 +233,9 @@ public class TeleOpBlue extends CommandOpMode {
         long tagStreakMs = (tagVisibleSinceMs == 0) ? 0 : System.currentTimeMillis() - tagVisibleSinceMs;
 
         String voltWarn = voltage < 11.0 ? " !!LOW!!" : voltage < 12.0 ? " !LOW!" : "";
-        telemetry.addLine(String.format("BLUE | tag %d | aim %s | LL %s | %dms | %.2fV (min %.2fV)%s",
+        telemetry.addLine(String.format("BLUE | tag %d | aim %s | hood %s | LL %s | %dms | %.2fV (min %.2fV)%s",
                 ShooterConfig.TRACKED_TAG_ID, shooter.isAutoAimEnabled() ? "ON" : "OFF",
+                inputHandler.isManualMode() ? "MANUAL(G2)" : "AUTO(poly)",
                 shooter.isLimelightEnabled() ? "ON" : "OFF",
                 loopTime, voltage, minVoltage, voltWarn));
 
@@ -248,18 +249,28 @@ public class TeleOpBlue extends CommandOpMode {
                     shooter.getLimelightStatus()));
         } else {
             String src = usingLocFallback ? "[LOC dist]" : "";
-            telemetry.addLine(String.format("LL  no tag (sees %s) %s| %s",
-                    shooter.getVisibleTagIds(), src, shooter.getLimelightStatus()));
+            telemetry.addLine(String.format("LL  no lock %s| %s",
+                    src, shooter.getLimelightStatus()));
         }
+        // Always-on LL diagnostics — tells you WHY there is no lock:
+        //   fids=0            → LL sees no AprilTags (wrong pipeline? not pointed at a tag?)
+        //   fids>0 ids=[24]   → it sees tag 24 but track=20 → TRACKED_TAG_ID mismatch
+        //   valid=false       → result invalid (LL still booting / bad frame)
+        //   "not started"     → LL off (G2-X toggle) or USB not enumerated
+        telemetry.addLine("LLdbg " + shooter.getLimelightDebugInfo());
+        telemetry.addLine("LLpipe " + shooter.getPipelineUploadStatus());
+
+        // Manual tuning readout (G2 D-pad L/R = power, U/D = hood).
+        telemetry.addLine(String.format("MANUAL  power(RPM) %.0f -> act %.0f  |  hood %.3f",
+                ShooterConfig.MANUAL_TARGET_RPM, shooter.getShooterVelocityRpm(),
+                hood.getPosition()));
 
         if (effectiveDist > 0) {
             double d = Math.max(ShooterConfig.MIN_COMP_DISTANCE,
                     Math.min(effectiveDist, ShooterConfig.MAX_COMP_DISTANCE));
-            double polyRpm   = ShooterConfig.hoodTuneAngle(d);
-            double boost     = ShooterConfig.distanceBoost(d);
-            double targetRpm = polyRpm * boost;
-            telemetry.addLine(String.format("Poly %.0fcm poly=%.0f x%.2f=%.0f | act=%.0f raw=%.0f t/s",
-                    d, polyRpm, boost, targetRpm,
+            double targetRpm = ShooterConfig.hoodTuneAngle(d);
+            telemetry.addLine(String.format("Poly %.0fcm -> %.0f RPM | act=%.0f raw=%.0f t/s",
+                    d, targetRpm,
                     shooter.getShooterVelocityRpm(), shooter.getRawLauncherTicksPerSec()));
             telemetry.addLine(String.format("Hood poly=%.2f actual=%.2f | CPR=%d",
                     ShooterConfig.hoodPitch(d), hood.getPosition(),
@@ -283,9 +294,9 @@ public class TeleOpBlue extends CommandOpMode {
                 shooter.getLastTurretPower(), turretSrc,
                 turretAngleDeg, shooter.getTurretTicks(),
                 LocalizationConfig.TURRET_FLIP_ANGLE, limitWarn));
-        telemetry.addLine(String.format("Pose %.0f,%.0f H%.0f | P=%.2f I=%.2f D=%.2f",
+        telemetry.addLine(String.format("Pose %.0f,%.0f H%.0f | P=%.3f I=%.3f D=%.4f",
                 pose.position.x, pose.position.y, drive.getHeading(),
-                ShooterConfig.AUTO_AIM_P_GAIN, ShooterConfig.AUTO_AIM_I_GAIN, ShooterConfig.AUTO_AIM_D_GAIN));
+                ShooterConfig.TURRET_P, ShooterConfig.TURRET_I, ShooterConfig.TURRET_D));
 
         // Heap + GC diagnostics — heap drops while tag visible → GC pressure from LL SDK.
         // gc>30ms rises steadily → GC pauses are the disconnect cause.
@@ -321,10 +332,8 @@ public class TeleOpBlue extends CommandOpMode {
                 || gamepad1.left_bumper
                 || gamepad1.right_trigger > ControlsConfig.TRIGGER_THRESHOLD;
         if (wantShoot) {
-            // Distance-ramped boost: strongest up close where the polynomial under-shoots,
-            // fading to none far out where it is already accurate.
-            shooter.setAutoShootRpmOverride(ShooterConfig.hoodTuneAngle(d)
-                    * ShooterConfig.distanceBoost(d));
+            // Raw polynomial RPM — no added boost.
+            shooter.setAutoShootRpmOverride(ShooterConfig.hoodTuneAngle(d));
         } else {
             shooter.clearAutoShootRpmOverride();
         }

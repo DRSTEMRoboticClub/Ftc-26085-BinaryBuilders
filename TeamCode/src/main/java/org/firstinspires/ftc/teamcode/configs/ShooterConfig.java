@@ -6,57 +6,52 @@ import com.acmerobotics.dashboard.config.Config;
 public class ShooterConfig {
     public static double TURRET_POWER_SCALE = 0.4;
 
-    // ── TeleOpBlue turret auto-aim (internal PD controller in runTurretControl) ──
-    // Gains are in NORMALISED-OFFSET space: tx is divided by CAMERA_HALF_FOV_DEG before
-    // multiplying by the gain, so 1.0 = tag at the very edge of the camera view.
-    // This matches the LocalSys TurretTracker gains exactly so both modes behave the same.
-    public static double CAMERA_HALF_FOV_DEG = 29.8;   // Limelight 3A horizontal half-FOV
-
-    // Gains act on normalised TX: norm = tx / CAMERA_HALF_FOV_DEG → [-1, +1]
-    // TX is encoder-compensated between LL updates so the PID sees live error, not stale.
-    // Start here and tune P up if tracking is too sluggish, D up if it overshoots.
-    public static double AUTO_AIM_P_GAIN = 1.2;    // raised: with the 45:1 turret reduction the
-                                                   // motor must drive harder for the same tracking speed
-    public static double AUTO_AIM_I_GAIN = 0.0;    // raise to ~0.05 if turret consistently stops short
-    public static double AUTO_AIM_D_GAIN = 0.3;    // time-based (power per normalised-error/s)
-    public static double AUTO_AIM_DEADBAND_DEG = 2.5;
-    public static double AUTO_AIM_MIN_POWER = 0.05;
-    public static double AUTO_AIM_MAX_POWER = 0.9;  // raised: 45:1 reduction caps turret speed anyway,
-                                                    // so use most of the motor instead of half of it
-
-    // Step size per G2 D-pad click when tuning AUTO_AIM_P_GAIN live
-    public static double AUTO_AIM_P_TUNE_STEP = 0.05;
-
-    // Flip to +1.0 if turret moves toward the tag; -1.0 if it moves away (tunable from Dashboard)
-    public static double AUTO_AIM_DIRECTION_SIGN = -1.0;
+    // ── Turret auto-aim: simple PIDController on raw TX degrees ─────────────────
+    // P = 0.02 → at 25° TX error output ≈ 0.5 (half power). Raise if tracking is sluggish.
+    // D = 0.001 → damps overshoot as the turret approaches centre. Raise if it still overshoots.
+    // Tune live from FTC Dashboard without redeploying.
+    public static double CAMERA_HALF_FOV_DEG = 29.8;   // Limelight 3A horizontal half-FOV (for holdTurretAtAngle)
+    public static double TURRET_P             = 0.020;
+    public static double TURRET_I             = 0.000;
+    public static double TURRET_D             = 0.001;
+    public static double TURRET_MAX_POWER     = 0.5;   // cap — 45:1 reduction is already slow
+    public static double TURRET_TOLERANCE_DEG = 1.5;   // stop moving when TX is within this of centre
+    // Flip to +1.0 if the turret moves AWAY from the tag instead of toward it.
+    public static double TURRET_DIRECTION_SIGN = -1.0;
+    // Keep old name as alias so holdTurretAtAngle() still compiles
+    public static double AUTO_AIM_DEADBAND_DEG = 1.5;
+    public static double AUTO_AIM_P_GAIN       = 0.020;
+    public static double AUTO_AIM_MIN_POWER    = 0.05;
+    public static double AUTO_AIM_MAX_POWER    = 0.5;
     public static int TRACKED_TAG_ID = 20; // Blue alliance hub tag; Red = 24
     public static int APRILTAG_PIPELINE = 0;
+
+    // Limelight pipeline JSON bundled as an APK asset (TeamCode/src/main/assets/). Uploaded to
+    // the Limelight at init every time the robot starts, so the LL can never drift / lose its
+    // configuration. Edit the asset file to change the pipeline; rebuild to deploy it.
+    public static final String LL_PIPELINE_ASSET = "AprilTags.vpr";
+
+    // Diagnostic / fallback: when true, if TRACKED_TAG_ID is not among the visible fiducials
+    // the system tracks the LARGEST (nearest) AprilTag it can see instead of reporting "no tag".
+    // Flip this on from Dashboard to test an ID mismatch — if tracking suddenly works, the
+    // physical tag's ID is not TRACKED_TAG_ID. Leave false for matches so it can't lock onto
+    // the wrong tag (e.g. an obelisk tag).
+    public static boolean TRACK_ANY_TAG = false;
 
     // How often (ms) cacheLimelightResult() samples the Limelight. The camera runs
     // continuously; this only rate-limits our getLatestResult() reads. 100 ms = 10 Hz,
     // plenty for tracking (the turret encoder-compensates between reads). Tune via Dashboard.
     public static long LL_READ_INTERVAL_MS = 100;
 
-    // ── Distance-ramped RPM boost ────────────────────────────────────────────
-    // Extra multiplier on the polynomial RPM target that is strongest at close range and
-    // fades to a small floor far out. The polynomial under-shoots up close (big boost) and
-    // also a little at long range (small boost) where it otherwise lands short.
-    //   dist <= BOOST_NEAR_DIST            → full boost (BOOST_MAX_FACTOR)
-    //   BOOST_NEAR_DIST .. BOOST_FAR_DIST  → linearly fades from BOOST_MAX_FACTOR to BOOST_FAR_FACTOR
-    //   dist >= BOOST_FAR_DIST             → far-range floor (BOOST_FAR_FACTOR)
-    // All are @Config so the curve can be tuned live from FTC Dashboard.
-    public static double BOOST_MAX_FACTOR = 1.06;   // 6 % boost at/under BOOST_NEAR_DIST
-    public static double BOOST_FAR_FACTOR = 1.02;   // 2 % boost held at/beyond BOOST_FAR_DIST
-    public static double BOOST_NEAR_DIST  = 200.0;  // cm — full boost held out to 200cm (needs it for all 3 balls)
-    public static double BOOST_FAR_DIST   = 250.0;  // cm — ~max range; boost reaches the far floor here
+    // Tag-data hold (ms). AprilTag detection naturally flickers — a frame or two with no
+    // detection between good ones. Without a hold, every dropped frame instantly resets tx and
+    // distance to "no tag", so the hood/RPM compensation never settles. We instead keep the
+    // last good tx + distance for this long after the tag was last seen, so brief flicker is
+    // ignored. Set to 0 to disable holding. Tune via Dashboard.
+    public static long TAG_HOLD_MS = 300;
 
-    /** Distance-dependent RPM multiplier (see BOOST_* fields). */
-    public static double distanceBoost(double d) {
-        if (d <= BOOST_NEAR_DIST) return BOOST_MAX_FACTOR;
-        if (d >= BOOST_FAR_DIST)  return BOOST_FAR_FACTOR;
-        double t = (d - BOOST_NEAR_DIST) / (BOOST_FAR_DIST - BOOST_NEAR_DIST);
-        return BOOST_MAX_FACTOR + t * (BOOST_FAR_FACTOR - BOOST_MAX_FACTOR);
-    }
+    // (Distance-ramped RPM boost removed — the shooter now uses the raw polynomial RPM with
+    //  no added percentage. Re-add a multiplier here only if shots come up consistently short.)
 
     // Distance threshold (cm) below which raw LL TX / TY measurements are used for turret
     // tracking and shooter compensation. Beyond this the localizer field position takes over:
@@ -121,20 +116,22 @@ public class ShooterConfig {
     // the flywheel target RPM and the hood pitch via calibrated cubic polynomials
     // (Horner form — one multiply-add per coefficient, cheap every loop).
     //
-    // Calibration data (motorValues.md):
-    //   21 cm → 3000 RPM, pitch 1.00
-    //  156 cm → 3800 RPM, pitch 0.61
-    //  190 cm → 4000 RPM, pitch 0.50
-    //  237 cm → 4200 RPM, pitch 0.36
-    //  318 cm → 4800 RPM, pitch 0.21
+    // Calibration data (motorValues.md) — cubic fit through these 4 points:
+    //   15 cm → 3300 RPM, pitch 1.00
+    //   50 cm → 3750 RPM, pitch 0.41
+    //  125 cm → 4100 RPM, pitch 0.38
+    //  200 cm → 4800 RPM, pitch 0.00
     //
-    // Toggle via FTC Dashboard — leave false until the robot has been localizer-tuned.
+    // TRUE — the re-fit polynomial (15–200 cm data) now drives RPM + hood pitch automatically
+    // whenever the goal tag is in view. The gamepad-2 manual controls still work as a fallback
+    // when there is no tag. Toggle via FTC Dashboard.
     public static boolean USE_DISTANCE_COMPENSATION = true;
 
     // Polynomial input is clamped to this range (cm) to prevent extrapolation errors.
-    // Calibration data spans 21–318 cm; a small margin is added on each end.
+    // Calibration data spans 15–200 cm; clamp to it so the cubic never extrapolates (beyond
+    // 200 cm a cubic RPM curve runs away and the pitch goes sharply negative).
     public static double MIN_COMP_DISTANCE = 15.0;
-    public static double MAX_COMP_DISTANCE = 320.0;
+    public static double MAX_COMP_DISTANCE = 200.0;
 
     // ── Camera geometry for TY-based distance (no 3D pose solver needed) ─────
     // Replaces getTargetPoseCameraSpace() with a single tan() call — orders of
@@ -153,18 +150,22 @@ public class ShooterConfig {
 
     /**
      * Flywheel target (RPM) for a given camera-to-tag distance in centimetres.
-     * tune = 6.5185e-5·d³ − 3.2190e-2·d² + 9.9130·d + 2804.79
+     * Cubic through (15,3300) (50,3750) (125,4100) (200,4800):
+     * rpm = 5.7065e-4·d³ − 1.8288e-1·d² + 2.27615e1·d + 2997.80
      */
     public static double hoodTuneAngle(double d) {
-        return ((6.5185466572e-05 * d - 3.2189951750e-02) * d + 9.9130248300) * d + 2804.7882679;
+        return ((5.706485706486e-04 * d - 1.828821028821e-01) * d + 2.276147576148e+01) * d
+                + 2.997800397800e+03;
     }
 
     /**
      * Hood pitch servo position [0.0 .. 1.0] for a given distance in centimetres.
-     * pitch = 2.8694e-8·d³ − 1.2812e-5·d² − 1.4227e-3·d + 1.0352
+     * Cubic through (15,1.00) (50,0.41) (125,0.38) (200,0.00):
+     * pitch = −9.7687e-7·d³ + 3.3522e-4·d² − 3.52516e-2·d + 1.45665
      */
     public static double hoodPitch(double d) {
-        double p = ((2.8694125875e-08 * d - 1.2812102664e-05) * d - 1.4226868243e-03) * d + 1.0352425960;
+        double p = ((-9.768729768730e-07 * d + 3.352162552163e-04) * d - 3.525156585157e-02) * d
+                + 1.456646776647e+00;
         return Math.max(0.0, Math.min(1.0, p));
     }
 }
