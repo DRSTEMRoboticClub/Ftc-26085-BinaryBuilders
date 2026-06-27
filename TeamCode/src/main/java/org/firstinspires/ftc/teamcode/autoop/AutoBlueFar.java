@@ -20,7 +20,7 @@ import org.firstinspires.ftc.teamcode.teleop.subsystems.ShooterSubsystem;
  *
  * Path layout (all heading 180°):
  *   step 0  SHOOTING  fire at START (68,6) — already at shoot pos
- *   step 1  PATHING   (68,6)→(39,35)→(8,35)→(68,6)   [intake, pre-spin on return at idx 2]
+ *   step 1  PATHING   (68,6)→(39,35)→(8,35)→(68,6)   [intake, pre-spin on return at idx 2, reversed]
  *   step 2  SHOOTING  fire at (68,6)
  *   step 3  PATHING   (68,6)→(1,8)→(68,6)             [intake, pre-spin on return at idx 1]
  *   step 4  SHOOTING  fire at (68,6)
@@ -41,7 +41,8 @@ public class AutoBlueFar extends LinearOpMode {
     public static double SHOOT_HOOD_POS       = 0.0;
     public static long   SHOOT_FIRE_MS        = 3000;
     public static double SHOOT_RPM_TOLERANCE  = 400.0;
-    public static long   SHOOT_SPINUP_TIMEOUT_MS = 1500;
+    /** Safety-net wait after arriving — shooter is already at speed so this rarely triggers. */
+    public static long   SHOOT_SPINUP_TIMEOUT_MS = 500;
 
     // ── Intake ─────────────────────────────────────────────────────────────────
     public static double INTAKE_POWER = 1.0;
@@ -58,9 +59,6 @@ public class AutoBlueFar extends LinearOpMode {
     private FsmState state          = FsmState.PATHING;
     private int      step           = 0;
     private long     stateEnteredMs = 0;
-
-    // PATHING sub-state
-    private int  preSpinPathIdx = 0;
 
     // SHOOTING sub-state
     private boolean shooterFired = false;
@@ -117,12 +115,12 @@ public class AutoBlueFar extends LinearOpMode {
     private void enterStep() {
         stateEnteredMs = System.currentTimeMillis();
         switch (step) {
-            case 0: enterShooting();                           break; // shoot at start (already there)
-            case 1: enterPathing(chainBall1(), true, 2);       break; // sweep zone 1, pre-spin at return leg (idx 2)
-            case 2: enterShooting();                           break;
-            case 3: enterPathing(chainBall2(), true, 1);       break; // go to 1,8, pre-spin at return leg (idx 1)
-            case 4: enterShooting();                           break;
-            default: state = FsmState.DONE;                    break;
+            case 0: enterShooting();                     break;
+            case 1: enterPathing(chainBall1(), true);    break;
+            case 2: enterShooting();                     break;
+            case 3: enterPathing(chainBall2(), true);    break;
+            case 4: enterShooting();                     break;
+            default: state = FsmState.DONE;              break;
         }
     }
 
@@ -130,20 +128,17 @@ public class AutoBlueFar extends LinearOpMode {
 
     // ── PATHING ────────────────────────────────────────────────────────────────
 
-    private void enterPathing(PathChain chain, boolean runIntake, int preSpinAt) {
-        state          = FsmState.PATHING;
-        preSpinPathIdx = preSpinAt;
+    private void enterPathing(PathChain chain, boolean runIntake) {
+        state = FsmState.PATHING;
+        shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED); // ensure closed before moving
         shooter.switchPipeline(ShooterConfig.APRILTAG_PIPELINE);
         intake.setPower(runIntake ? INTAKE_POWER : 0);
-        shooter.setShooterVelocityRpm(0); // off while collecting; pre-spin starts on return leg
+        hood.setPosition(SHOOT_HOOD_POS);
+        shooter.setShooterVelocityRpm(SHOOT_RPM);
         runner.followPath(chain);
     }
 
     private void tickPathing() {
-        if (follower.getChainIndex() >= preSpinPathIdx) {
-            hood.setPosition(SHOOT_HOOD_POS);
-            shooter.setShooterVelocityRpm(SHOOT_RPM);
-        }
         if (!runner.isBusy()) advance();
     }
 
@@ -174,8 +169,7 @@ public class AutoBlueFar extends LinearOpMode {
         } else if (System.currentTimeMillis() - fireStartMs >= SHOOT_FIRE_MS) {
             shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
             intake.setPower(0);
-            shooter.setShooterVelocityRpm(0);
-            advance();
+            advance(); // shooter stays at SHOOT_RPM — enterPathing keeps it running
         }
     }
 
@@ -190,6 +184,7 @@ public class AutoBlueFar extends LinearOpMode {
                 .setConstantHeadingInterpolation(HEADING)
                 .addPath(new BezierLine(BALL1, START_SHOOT))
                 .setConstantHeadingInterpolation(HEADING)
+                .setReversed()
                 .build();
     }
 
@@ -200,6 +195,7 @@ public class AutoBlueFar extends LinearOpMode {
                 .setConstantHeadingInterpolation(HEADING)
                 .addPath(new BezierLine(BALL2, START_SHOOT))
                 .setConstantHeadingInterpolation(HEADING)
+                .setReversed()
                 .build();
     }
 
@@ -216,8 +212,7 @@ public class AutoBlueFar extends LinearOpMode {
         telemetry.addData("RPM",     "%.0f / %.0f  fired=%b",
                 shooter.getShooterVelocityRpm(), SHOOT_RPM, shooterFired);
         if (state == FsmState.PATHING) {
-            telemetry.addData("PathIdx", "%d  preSpinAt %d",
-                    follower.getChainIndex(), preSpinPathIdx);
+            telemetry.addData("PathIdx", "%d", follower.getChainIndex());
         }
     }
 }
