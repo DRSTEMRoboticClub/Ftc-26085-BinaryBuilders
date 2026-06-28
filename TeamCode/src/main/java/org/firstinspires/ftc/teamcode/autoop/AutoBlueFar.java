@@ -231,7 +231,7 @@ public class AutoBlueFar extends LinearOpMode {
             // follower.update() runs every loop so Pedro executes this concurrently with tickShooting.
             // tickPathing is NOT called during SHOOTING, so path completion won't trigger advance().
             Pose cur = follower.getPose();
-            Pose driftEnd = new Pose(cur.getX(), cur.getY() + BALL2_DRIFT_INCHES, HEADING);
+            Pose driftEnd = new Pose(cur.getX(), cur.getY() - BALL2_DRIFT_INCHES, HEADING);
             runner.followPath(follower.pathBuilder()
                     .addPath(new BezierLine(cur, driftEnd))
                     .setConstantHeadingInterpolation(HEADING)
@@ -279,7 +279,7 @@ public class AutoBlueFar extends LinearOpMode {
     private PathChain chainBall2() {
         return follower.pathBuilder()
                 .addPath(new BezierLine(SHOOT, BALL2))
-                .setConstantHeadingInterpolation(0)    // face +X to approach ball
+                .setConstantHeadingInterpolation(HEADING)
                 .addPath(new BezierLine(BALL2, SHOOT))
                 .setConstantHeadingInterpolation(HEADING)
                 .build();
