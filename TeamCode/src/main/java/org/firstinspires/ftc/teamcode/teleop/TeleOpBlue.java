@@ -188,7 +188,14 @@ public class TeleOpBlue extends CommandOpMode {
 
                 // Distance compensation (PRE): set the flywheel RPM target from the polynomial
                 // BEFORE inputHandler runs updatePID(), so the custom velocity PID uses it.
-                double compDist = applyShooterCompensation(effectiveDist);
+                // In manual mode, G2 D-pad controls RPM directly — skip the polynomial override.
+                double compDist;
+                if (inputHandler.isManualMode()) {
+                    shooter.clearAutoShootRpmOverride();
+                    compDist = -1;
+                } else {
+                    compDist = applyShooterCompensation(effectiveDist);
+                }
 
                 // Feed live heading to the turret so it counter-rotates during chassis turns
                 // (heading feed-forward). Must run before inputHandler -> runTurretControl().

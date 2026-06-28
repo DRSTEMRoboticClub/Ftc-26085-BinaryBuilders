@@ -17,7 +17,7 @@ public class ShooterConfig {
     public static double TURRET_MAX_POWER     = 0.5;   // cap — 45:1 reduction is already slow
     public static double TURRET_TOLERANCE_DEG = 3.0;   // deadzone — turret holds when TX is within this (wider = less jitter while shooting)
     // Flip to +1.0 if the turret moves AWAY from the tag instead of toward it.
-    public static double TURRET_DIRECTION_SIGN = -1.0;
+    public static double TURRET_DIRECTION_SIGN = 1.0;
     // Counter-turn feed-forward: power added per degree of chassis heading change since last LL
     // frame. Keeps the turret locked on the tag while the robot is rotating between 10 Hz reads.
     // Flip to negative if the turret moves WITH the robot instead of against it.
@@ -121,21 +121,20 @@ public class ShooterConfig {
     // (Horner form — one multiply-add per coefficient, cheap every loop).
     //
     // Calibration data (motorValues.md) — cubic fit through these 4 points:
-    //   15 cm → 3300 RPM, pitch 1.00
-    //   50 cm → 3750 RPM, pitch 0.41
-    //  125 cm → 4100 RPM, pitch 0.38
-    //  200 cm → 4800 RPM, pitch 0.00
+    //   95 cm → 3900 RPM, pitch 0.145
+    //  125 cm → 4200 RPM, pitch 0.085
+    //  150 cm → 4400 RPM, pitch 0.025
+    //  195 cm → 4900 RPM, pitch 0.000
     //
-    // TRUE — the re-fit polynomial (15–200 cm data) now drives RPM + hood pitch automatically
+    // TRUE — the re-fit polynomial (95–195 cm data) now drives RPM + hood pitch automatically
     // whenever the goal tag is in view. The gamepad-2 manual controls still work as a fallback
     // when there is no tag. Toggle via FTC Dashboard.
     public static boolean USE_DISTANCE_COMPENSATION = true;
 
     // Polynomial input is clamped to this range (cm) to prevent extrapolation errors.
-    // Calibration data spans 15–200 cm; clamp to it so the cubic never extrapolates (beyond
-    // 200 cm a cubic RPM curve runs away and the pitch goes sharply negative).
-    public static double MIN_COMP_DISTANCE = 15.0;
-    public static double MAX_COMP_DISTANCE = 200.0;
+    // Calibration data spans 95–195 cm; clamp to it so the cubic never extrapolates.
+    public static double MIN_COMP_DISTANCE = 95.0;
+    public static double MAX_COMP_DISTANCE = 195.0;
 
     // ── Camera geometry for TY-based distance (no 3D pose solver needed) ─────
     // Replaces getTargetPoseCameraSpace() with a single tan() call — orders of
@@ -154,22 +153,22 @@ public class ShooterConfig {
 
     /**
      * Flywheel target (RPM) for a given camera-to-tag distance in centimetres.
-     * Cubic through (15,3300) (50,3750) (125,4100) (200,4800):
-     * rpm = 5.7065e-4·d³ − 1.8288e-1·d² + 2.27615e1·d + 2997.80
+     * Cubic through (95,3900) (125,4200) (150,4400) (195,4900):
+     * rpm = 8.0808e-4·d³ − 3.3535e-1·d² + 5.4263e1·d + 1078.8
      */
     public static double hoodTuneAngle(double d) {
-        return ((5.706485706486e-04 * d - 1.828821028821e-01) * d + 2.276147576148e+01) * d
-                + 2.997800397800e+03;
+        return ((8.08080808e-04 * d - 3.35353535e-01) * d + 5.42626263e+01) * d
+                + 1.07878788e+03;
     }
 
     /**
      * Hood pitch servo position [0.0 .. 1.0] for a given distance in centimetres.
-     * Cubic through (15,1.00) (50,0.41) (125,0.38) (200,0.00):
-     * pitch = −9.7687e-7·d³ + 3.3522e-4·d² − 3.52516e-2·d + 1.45665
+     * Cubic through (95,0.145) (125,0.085) (150,0.025) (195,0.000):
+     * pitch = 3.3622e-7·d³ − 1.3167e-4·d² + 1.4688e-2·d − 3.5025e-1
      */
     public static double hoodPitch(double d) {
-        double p = ((-9.768729768730e-07 * d + 3.352162552163e-04) * d - 3.525156585157e-02) * d
-                + 1.456646776647e+00;
+        double p = ((3.36219336e-07 * d - 1.31673882e-04) * d + 1.46878427e-02) * d
+                - 3.50254329e-01;
         return Math.max(0.0, Math.min(1.0, p));
     }
 }

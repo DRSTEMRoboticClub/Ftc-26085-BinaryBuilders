@@ -45,9 +45,18 @@ public class ShooterSubsystem extends SubsystemBase {
     private final PIDController turretPID = new PIDController(
             ShooterConfig.TURRET_P, ShooterConfig.TURRET_I, ShooterConfig.TURRET_D);
 
-    private int    turretTicksAtLLUpdate  = 0;    // kept for cacheLimelightResult snapshot
+    private int    turretTicksAtLLUpdate  = 0;
     private double headingAtLLUpdate      = Double.NaN;
     private double currentRobotHeadingDeg = Double.NaN;
+    // Full pose (Pedro field inches) — set via setRobotPose() every loop in auto modes.
+    // When set, runTurretControl() compensates for translational displacement between LL reads
+    // in addition to heading + turret rotation. If never set (TeleOp / heading-only callers),
+    // poseX/Y stay NaN and only heading+turret compensation runs (same as before).
+    private double poseX              = Double.NaN;
+    private double poseY              = Double.NaN;
+    private double poseXAtLLUpdate    = Double.NaN;
+    private double poseYAtLLUpdate    = Double.NaN;
+    private double turretDegAtLLUpdate = Double.NaN;
     private boolean turretAtLimit   = false;
     private boolean turretSearching = false;
     private boolean turretLocked    = false; // latches true once TX enters deadzone; clears only when TX exits
@@ -67,6 +76,10 @@ public class ShooterSubsystem extends SubsystemBase {
     private String  llPipelineStatus = "not uploaded"; // result of the init pipeline upload
     private long    lastTrackedTagMs = 0;      // when we last had a real lock (for TAG_HOLD_MS)
     private boolean tagHeld = false;           // true when current tx/dist are HELD stale, not fresh
+    // Aim bias: the PID drives estimatedTx → aimOffsetDeg instead of 0.
+    // Positive = aim left of tag center (tag appears to the right in the image).
+    // Set via setAimOffsetDeg(); default 0 (centre on tag).
+    private double aimOffsetDeg = 0.0;
 
     // When true, runTurretControl() skips its internal auto-aim and only applies
     // manualPower. Used by LocalSysBase so TurretTracker has sole control over auto-aim
@@ -216,7 +229,10 @@ public class ShooterSubsystem extends SubsystemBase {
             // Snapshot encoder position + robot heading so runTurretControl can estimate the
             // real-time TX between LL updates (turret + chassis rotation since this read).
             turretTicksAtLLUpdate = getTurretTicks();
-            headingAtLLUpdate = currentRobotHeadingDeg;
+            headingAtLLUpdate     = currentRobotHeadingDeg;
+            poseXAtLLUpdate       = poseX;
+            poseYAtLLUpdate       = poseY;
+            turretDegAtLLUpdate   = getTurretAngleDeg();
             // Release the raw result reference immediately so it is GC-eligible as soon as
             // the SDK also drops its internal reference. In auto modes (retainCachedResult=true)
             // keep it alive for AprilTagLocalizer, which needs it until applyAprilTagCorrection().
@@ -456,6 +472,20 @@ public class ShooterSubsystem extends SubsystemBase {
         currentRobotHeadingDeg = headingDeg;
     }
 
+    /**
+     * Full pose update for auto modes. Enables translational displacement compensation
+     * between Limelight reads in addition to heading + turret-rotation compensation.
+     * Call every loop before runTurretControl(). xIn / yIn are Pedro field coordinates (inches).
+     */
+    public void setRobotPose(double xIn, double yIn, double headingDeg) {
+        poseX = xIn;
+        poseY = yIn;
+        currentRobotHeadingDeg = headingDeg;
+    }
+
+    /** Aim bias applied as a PID setpoint offset. Positive = left of tag centre. */
+    public void setAimOffsetDeg(double deg) { aimOffsetDeg = deg; }
+
     /** Wrap an angle difference into (-180, 180] degrees. */
     private static double normalizeDeg(double deg) {
         while (deg >  180.0) deg -= 360.0;
@@ -470,6 +500,33 @@ public class ShooterSubsystem extends SubsystemBase {
     /** TX (horizontal offset, degrees) of the tracked tag from camera centre. Null if not seen. */
     public Double getTrackedTagTx() {
         return Double.isNaN(cachedTxDeg) ? null : cachedTxDeg;
+    }
+
+    /**
+     * The pose-fused estimated TX used by runTurretControl() as the PID measurement.
+     * Corrects the last LL TX for heading, turret, and translational changes since that read.
+     * Returns NaN when no tag has ever been detected.
+     */
+    public double getEstimatedTx() {
+        if (Double.isNaN(cachedTxDeg)) return Double.NaN;
+        double est = cachedTxDeg;
+        if (!Double.isNaN(currentRobotHeadingDeg) && !Double.isNaN(headingAtLLUpdate)) {
+            est += normalizeDeg(currentRobotHeadingDeg - headingAtLLUpdate);
+        }
+        if (!Double.isNaN(turretDegAtLLUpdate)) {
+            est -= (getTurretAngleDeg() - turretDegAtLLUpdate);
+        }
+        if (cachedDistCm > 0
+                && !Double.isNaN(poseX) && !Double.isNaN(poseXAtLLUpdate)
+                && !Double.isNaN(headingAtLLUpdate) && !Double.isNaN(turretDegAtLLUpdate)) {
+            double dxCm = (poseX - poseXAtLLUpdate) * 2.54;
+            double dyCm = (poseY - poseYAtLLUpdate) * 2.54;
+            double tagBearingRad = Math.toRadians(
+                    headingAtLLUpdate + turretDegAtLLUpdate + cachedTxDeg);
+            double perp = dxCm * Math.sin(tagBearingRad) - dyCm * Math.cos(tagBearingRad);
+            est -= Math.toDegrees(Math.atan2(perp, cachedDistCm));
+        }
+        return est;
     }
 
     /** Comma-separated list of all AprilTag IDs currently visible to the Limelight. */
@@ -499,31 +556,71 @@ public class ShooterSubsystem extends SubsystemBase {
             return;
         }
 
-        // ── Simple PID auto-aim on raw TX from Limelight ─────────────────────────
-        // TX is the horizontal angle (degrees) from camera centre to the tracked tag.
-        // The PID drives TX → 0. When TX is within TURRET_TOLERANCE_DEG or no tag is
-        // visible, the turret holds position with heading feed-forward only.
+        // ── Pose-fused auto-aim ───────────────────────────────────────────────────
+        // Between Limelight reads (100 ms / 10 Hz) we estimate the current TX by
+        // correcting the last LL reading for every source of camera motion since that read:
+        //   1. Robot heading change   — 1:1 counter-rotation (replaces the old proportional FF)
+        //   2. Turret rotation        — camera moved, so TX changed by the same amount
+        //   3. Robot translation      — lateral/forward motion shifts the tag's apparent angle
+        //      (requires setRobotPose(); gracefully skipped when only setRobotHeading() is used)
+        // The estimated TX is fed directly into the PID as the measurement, so the PID reacts
+        // at the full loop rate rather than waiting for the next LL frame.
+        //
+        // Sign notes (flip TURRET_DIRECTION_SIGN if the turret diverges instead of converges):
+        //   • Heading comp: robot turns CCW (+dH) → camera also turns CCW → tag appears more
+        //     to the right (TX increases) → estimatedTx += dH.
+        //   • Turret comp:  turret turns CCW (+dA) → camera points more left → TX decreases
+        //     → estimatedTx -= dA.
+        //   • Translation:  perpendicular motion shifts the tag's apparent angle; sign is
+        //     derived from the tag's bearing at the time of the last LL read.
         double power = 0;
         turretSearching = false;
         turretAtLimit = false;
         if (autoAimEnabled) {
-            boolean tagOutsideDeadzone = !Double.isNaN(cachedTxDeg)
-                    && Math.abs(cachedTxDeg) > ShooterConfig.TURRET_TOLERANCE_DEG;
+            double estimatedTx = cachedTxDeg; // NaN when no tag has ever been seen
+
+            if (!Double.isNaN(cachedTxDeg)) {
+                // 1. Heading change since last LL update (1:1, not just a proportional gain).
+                if (!Double.isNaN(currentRobotHeadingDeg) && !Double.isNaN(headingAtLLUpdate)) {
+                    estimatedTx += normalizeDeg(currentRobotHeadingDeg - headingAtLLUpdate);
+                }
+
+                // 2. Turret rotation since last LL update.
+                if (!Double.isNaN(turretDegAtLLUpdate)) {
+                    estimatedTx -= (getTurretAngleDeg() - turretDegAtLLUpdate);
+                }
+
+                // 3. Translational displacement — needs distance and both pose snapshots.
+                if (cachedDistCm > 0
+                        && !Double.isNaN(poseX) && !Double.isNaN(poseXAtLLUpdate)
+                        && !Double.isNaN(headingAtLLUpdate) && !Double.isNaN(turretDegAtLLUpdate)) {
+                    double dxCm = (poseX - poseXAtLLUpdate) * 2.54; // inches → cm
+                    double dyCm = (poseY - poseYAtLLUpdate) * 2.54;
+                    // Approximate field bearing to tag at the time of the last LL read.
+                    double tagBearingRad = Math.toRadians(
+                            headingAtLLUpdate + turretDegAtLLUpdate + cachedTxDeg);
+                    // Component of robot displacement perpendicular to the line of sight.
+                    // Positive perp = robot moved so the tag appears further left → TX decreases.
+                    double perp = dxCm * Math.sin(tagBearingRad) - dyCm * Math.cos(tagBearingRad);
+                    estimatedTx -= Math.toDegrees(Math.atan2(perp, cachedDistCm));
+                }
+            }
+
+            double txError = Double.isNaN(estimatedTx) ? Double.NaN : (estimatedTx - aimOffsetDeg);
+            boolean tagOutsideDeadzone = !Double.isNaN(txError)
+                    && Math.abs(txError) > ShooterConfig.TURRET_TOLERANCE_DEG;
 
             if (tagOutsideDeadzone) {
-                // Outside deadzone: unlock and track with PID + heading feed-forward.
                 turretLocked = false;
-                // Counter-turn: compensate for chassis rotation since the last 10 Hz LL frame.
-                double headingFF = 0;
-                if (!Double.isNaN(currentRobotHeadingDeg) && !Double.isNaN(headingAtLLUpdate)) {
-                    double deltaHeadingDeg = normalizeDeg(currentRobotHeadingDeg - headingAtLLUpdate);
-                    headingFF = deltaHeadingDeg * ShooterConfig.HEADING_FF_GAIN;
-                }
                 turretPID.setPID(ShooterConfig.TURRET_P, ShooterConfig.TURRET_I, ShooterConfig.TURRET_D);
-                double pidOut = turretPID.calculate(cachedTxDeg, 0) * ShooterConfig.TURRET_DIRECTION_SIGN;
-                power = Range.clip(pidOut + headingFF, -ShooterConfig.TURRET_MAX_POWER, ShooterConfig.TURRET_MAX_POWER);
+                double pidOut = turretPID.calculate(txError, 0) * ShooterConfig.TURRET_DIRECTION_SIGN;
+                // Minimum power floor so static friction never stalls tracking at small angles.
+                if (Math.abs(pidOut) > 0.001) {
+                    pidOut = Math.copySign(
+                            Math.max(Math.abs(pidOut), ShooterConfig.AUTO_AIM_MIN_POWER), pidOut);
+                }
+                power = Range.clip(pidOut, -ShooterConfig.TURRET_MAX_POWER, ShooterConfig.TURRET_MAX_POWER);
             } else {
-                // Inside deadzone or no tag: latch locked — zero power until tag leaves deadzone.
                 turretLocked = true;
                 turretPID.reset();
                 power = 0;
@@ -581,6 +678,11 @@ public class ShooterSubsystem extends SubsystemBase {
     /** True when the turret is slewing back toward the last-seen tag direction (tag out of view). */
     public boolean isTurretSearching() {
         return turretSearching;
+    }
+
+    /** True when the turret TX error is within TURRET_TOLERANCE_DEG of the aim offset — i.e. settled on target. */
+    public boolean isTurretLocked() {
+        return turretLocked;
     }
 
     /** True when the tag's bearing is beyond the cable limit — turret is pinned at the limit
