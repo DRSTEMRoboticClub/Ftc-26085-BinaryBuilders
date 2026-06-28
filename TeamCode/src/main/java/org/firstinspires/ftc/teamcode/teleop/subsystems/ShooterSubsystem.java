@@ -50,6 +50,7 @@ public class ShooterSubsystem extends SubsystemBase {
     private double currentRobotHeadingDeg = Double.NaN;
     private boolean turretAtLimit   = false;
     private boolean turretSearching = false;
+    private boolean turretLocked    = false; // latches true once TX enters deadzone; clears only when TX exits
 
     // One Limelight result per loop — call cacheLimelightResult() at loop start.
     // TX, distance, and visible-IDs are pre-extracted into primitives so every getter
@@ -359,10 +360,16 @@ public class ShooterSubsystem extends SubsystemBase {
         launcherRight.setPower(output);
     }
 
+    public double getLeftShooterRpm() {
+        return ticksPerSecondToRpm(Math.abs(launcherLeft.getVelocity()));
+    }
+
+    public double getRightShooterRpm() {
+        return ticksPerSecondToRpm(Math.abs(launcherRight.getVelocity()));
+    }
+
     public double getShooterVelocityRpm() {
-        double leftRpm = ticksPerSecondToRpm(Math.abs(launcherLeft.getVelocity()));
-        double rightRpm = ticksPerSecondToRpm(Math.abs(launcherRight.getVelocity()));
-        return (leftRpm + rightRpm) / 2.0;
+        return (getLeftShooterRpm() + getRightShooterRpm()) / 2.0;
     }
 
     public double getTargetShooterRpm() {
@@ -495,18 +502,31 @@ public class ShooterSubsystem extends SubsystemBase {
         // ── Simple PID auto-aim on raw TX from Limelight ─────────────────────────
         // TX is the horizontal angle (degrees) from camera centre to the tracked tag.
         // The PID drives TX → 0. When TX is within TURRET_TOLERANCE_DEG or no tag is
-        // visible, the turret holds position (power = 0).
+        // visible, the turret holds position with heading feed-forward only.
         double power = 0;
         turretSearching = false;
         turretAtLimit = false;
         if (autoAimEnabled) {
-            if (!Double.isNaN(cachedTxDeg) && Math.abs(cachedTxDeg) > ShooterConfig.TURRET_TOLERANCE_DEG) {
-                // Update coefficients from Dashboard each loop so live tuning takes effect.
+            boolean tagOutsideDeadzone = !Double.isNaN(cachedTxDeg)
+                    && Math.abs(cachedTxDeg) > ShooterConfig.TURRET_TOLERANCE_DEG;
+
+            if (tagOutsideDeadzone) {
+                // Outside deadzone: unlock and track with PID + heading feed-forward.
+                turretLocked = false;
+                // Counter-turn: compensate for chassis rotation since the last 10 Hz LL frame.
+                double headingFF = 0;
+                if (!Double.isNaN(currentRobotHeadingDeg) && !Double.isNaN(headingAtLLUpdate)) {
+                    double deltaHeadingDeg = normalizeDeg(currentRobotHeadingDeg - headingAtLLUpdate);
+                    headingFF = deltaHeadingDeg * ShooterConfig.HEADING_FF_GAIN;
+                }
                 turretPID.setPID(ShooterConfig.TURRET_P, ShooterConfig.TURRET_I, ShooterConfig.TURRET_D);
-                double output = turretPID.calculate(cachedTxDeg, 0) * ShooterConfig.TURRET_DIRECTION_SIGN;
-                power = Range.clip(output, -ShooterConfig.TURRET_MAX_POWER, ShooterConfig.TURRET_MAX_POWER);
+                double pidOut = turretPID.calculate(cachedTxDeg, 0) * ShooterConfig.TURRET_DIRECTION_SIGN;
+                power = Range.clip(pidOut + headingFF, -ShooterConfig.TURRET_MAX_POWER, ShooterConfig.TURRET_MAX_POWER);
             } else {
-                turretPID.reset(); // no tag or centred — clear integrator
+                // Inside deadzone or no tag: latch locked — zero power until tag leaves deadzone.
+                turretLocked = true;
+                turretPID.reset();
+                power = 0;
             }
         }
 

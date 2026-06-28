@@ -33,15 +33,16 @@ public class AutoBlueNear extends LinearOpMode {
     private static final double HEADING    = Math.toRadians(180);
     private static final Pose START        = new Pose(21.000, 119.000, HEADING);
     private static final Pose SHOOT_START  = new Pose(53.000,  88.000, HEADING);
-    private static final Pose BALL1_SWEEP  = new Pose(39.000,  75.000, HEADING);
-    private static final Pose BALL1        = new Pose( 9.000,  75.000, HEADING);
+    private static final Pose BALL1_SWEEP  = new Pose(39.000,  77.000, HEADING);
+    private static final Pose BALL1        = new Pose( 9.000,  77.000, HEADING);
     private static final Pose BALL2_SWEEP  = new Pose(39.000,  44.000, HEADING);
-    private static final Pose BALL2        = new Pose( 9.000,  44.000, HEADING);
+    private static final Pose BALL2        = new Pose( 8.000,  44.000, HEADING);
     private static final Pose FINAL        = new Pose( 10.00,  88.000, HEADING);
-    private static final Pose SHOOT        = new Pose(50.000,  85.000, HEADING);
+    private static final Pose SHOOT        = new Pose(50.000,  83.000, HEADING);
+    private static final Pose RELEASE      = new Pose(11.500,  61.500, 165);
 
     // ── Shooter constants (tune from FTC Dashboard) ────────────────────────────
-    public static double SHOOT_RPM            = 4000.0;
+    public static double SHOOT_RPM            = 4250.0;
     public static double SHOOT_HOOD_POS       = 0.0;
     public static long   SHOOT_FIRE_MS        = 1500;
     public static double SHOOT_RPM_TOLERANCE  = 400.0;
@@ -49,10 +50,11 @@ public class AutoBlueNear extends LinearOpMode {
     public static long   SHOOT_SPINUP_TIMEOUT_MS = 0;
 
     // ── Intake ─────────────────────────────────────────────────────────────────
-    public static double INTAKE_POWER = 1.0;
+    public static double INTAKE_POWER     = 1.0;
+    public static long   INTAKE_WAIT_MS   = 3000;
 
     // ── State machine ──────────────────────────────────────────────────────────
-    private enum FsmState { PATHING, SHOOTING, DONE }
+    private enum FsmState { PATHING, SHOOTING, INTAKE_WAIT, DONE }
 
     private PedroAutoRunner  runner;
     private Follower         follower;
@@ -65,8 +67,11 @@ public class AutoBlueNear extends LinearOpMode {
     private long     stateEnteredMs = 0;
 
     // SHOOTING sub-state
-    private boolean shooterFired = false;
-    private long    fireStartMs  = 0;
+    private boolean shooterFired    = false;
+    private long    fireStartMs     = 0;
+
+    // INTAKE_WAIT sub-state
+    private long    intakeWaitStart = 0;
 
     @Override
     public void runOpMode() {
@@ -93,9 +98,10 @@ public class AutoBlueNear extends LinearOpMode {
 
         while (opModeIsActive() && !isStopRequested()) {
             switch (state) {
-                case PATHING:  tickPathing();  break;
-                case SHOOTING: tickShooting(); break;
-                case DONE:                     break;
+                case PATHING:     tickPathing();     break;
+                case SHOOTING:    tickShooting();    break;
+                case INTAKE_WAIT: tickIntakeWait();  break;
+                case DONE:                           break;
             }
 
             follower.update();
@@ -114,14 +120,25 @@ public class AutoBlueNear extends LinearOpMode {
     private void enterStep() {
         stateEnteredMs = System.currentTimeMillis();
         switch (step) {
-            case 0: enterPathing(chainApproach(), false); break;
-            case 1: enterShooting();                      break;
-            case 2: enterPathing(chainBall1(),    true);  break;
-            case 3: enterShooting();                      break;
-            case 4: enterPathing(chainBall2(),    true);  break;
-            case 5: enterShooting();                      break;
-            case 6: enterPathing(chainFinal(),    false); break;
-            default: state = FsmState.DONE;               break;
+            case 0:  enterPathing(chainApproach(),      false); break;
+            case 1:  enterShooting();                           break;
+            case 2:  enterPathing(chainBall1(),          true); break;
+            case 3:  enterShooting();                           break;
+            case 4:  enterPathing(chainBall2(),          true); break;
+            case 5:  enterShooting();                           break;
+            // RELEASE cycle 1
+            case 6:  enterPathing(chainShootToRelease(), true); break;
+            case 7:  enterIntakeWait();                         break;
+            case 8:  enterPathing(chainReleaseToShoot(), false);break;
+            case 9:  enterShooting();                           break;
+            // RELEASE cycle 2
+            case 10: enterPathing(chainShootToRelease(), true); break;
+            case 11: enterIntakeWait();                         break;
+            case 12: enterPathing(chainReleaseToShoot(), false);break;
+            case 13: enterShooting();                           break;
+            // Park
+            case 14: enterPathing(chainFinal(),          false);break;
+            default: state = FsmState.DONE;                     break;
         }
     }
 
@@ -172,6 +189,23 @@ public class AutoBlueNear extends LinearOpMode {
         }
     }
 
+    // ── INTAKE_WAIT ────────────────────────────────────────────────────────────
+
+    private void enterIntakeWait() {
+        state           = FsmState.INTAKE_WAIT;
+        intakeWaitStart = System.currentTimeMillis();
+        intake.setPower(INTAKE_POWER);
+        shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
+        shooter.setShooterVelocityRpm(SHOOT_RPM);
+    }
+
+    private void tickIntakeWait() {
+        if (System.currentTimeMillis() - intakeWaitStart >= INTAKE_WAIT_MS) {
+            intake.setPower(0);
+            advance();
+        }
+    }
+
     // ── Path chains ────────────────────────────────────────────────────────────
 
     /** START → SHOOT_START */
@@ -202,6 +236,22 @@ public class AutoBlueNear extends LinearOpMode {
                 .addPath(new BezierLine(BALL2_SWEEP, BALL2))
                 .setConstantHeadingInterpolation(HEADING)
                 .addPath(new BezierLine(BALL2, SHOOT))
+                .setConstantHeadingInterpolation(HEADING)
+                .build();
+    }
+
+    /** SHOOT → RELEASE */
+    private PathChain chainShootToRelease() {
+        return follower.pathBuilder()
+                .addPath(new BezierLine(SHOOT, RELEASE))
+                .setConstantHeadingInterpolation(Math.toRadians(135))
+                .build();
+    }
+
+    /** RELEASE → SHOOT */
+    private PathChain chainReleaseToShoot() {
+        return follower.pathBuilder()
+                .addPath(new BezierLine(RELEASE, SHOOT))
                 .setConstantHeadingInterpolation(HEADING)
                 .build();
     }

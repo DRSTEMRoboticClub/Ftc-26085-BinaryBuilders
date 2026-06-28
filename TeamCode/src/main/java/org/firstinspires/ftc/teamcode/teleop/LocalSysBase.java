@@ -11,7 +11,7 @@ import org.firstinspires.ftc.teamcode.configs.LocalizationConfig;
 import org.firstinspires.ftc.teamcode.configs.ShooterConfig;
 import org.firstinspires.ftc.teamcode.configs.ShootZoneConfig;
 import org.firstinspires.ftc.teamcode.teleop.subsystems.*;
-import org.firstinspires.ftc.teamcode.tools.PriorityInputHandler;
+import org.firstinspires.ftc.teamcode.tools.InputHandler;
 import org.firstinspires.ftc.teamcode.tools.localization.AprilTagLocalizer;
 import org.firstinspires.ftc.teamcode.tools.localization.MecanumLocalizer;
 import org.firstinspires.ftc.teamcode.tools.localization.PanelsFieldDrawer;
@@ -23,7 +23,7 @@ import java.util.List;
  * Shared base for the LocalSys localization-testing TeleOps.
  *
  * Behaves EXACTLY like {@link TeleOpBlue} for driving / shooter / intake / hood
- * (same subsystems, same {@link PriorityInputHandler}), and layers on:
+ * (same subsystems, same {@link InputHandler}), and layers on:
  *   - Road Runner mecanum dead reckoning ({@link MecanumLocalizer})
  *   - turret-encoder based turret tracking + cable-safe wraparound ({@link TurretTracker})
  *   - turret-compensated AprilTag pose correction ({@link AprilTagLocalizer})
@@ -45,7 +45,7 @@ public abstract class LocalSysBase extends CommandOpMode {
     private ShooterSubsystem shooter;
     private IntakeSubsystem intake;
     private HoodSubsystem hood;
-    private PriorityInputHandler inputHandler;
+    private InputHandler inputHandler;
     private GamepadEx g1, g2;
     private VoltageSensor batteryVoltageSensor;
     private List<LynxModule> allHubs;
@@ -81,7 +81,7 @@ public abstract class LocalSysBase extends CommandOpMode {
 
         g1 = new GamepadEx(gamepad1);
         g2 = new GamepadEx(gamepad2);
-        inputHandler = new PriorityInputHandler(g1, g2);
+        inputHandler = new InputHandler(g1, g2);
 
         batteryVoltageSensor = hardwareMap.voltageSensor.iterator().next();
 

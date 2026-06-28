@@ -8,7 +8,7 @@ import org.firstinspires.ftc.teamcode.teleop.subsystems.*;
 import java.util.HashMap;
 import java.util.Map;
 
-public class PriorityInputHandler {
+public class InputHandler {
     private final GamepadEx g1, g2;
     private boolean g1HasPriority = true;
     private boolean manualMode = false;
@@ -18,7 +18,7 @@ public class PriorityInputHandler {
 
     private double lastForward, lastStrafe, lastTurn;
 
-    public PriorityInputHandler(GamepadEx g1, GamepadEx g2) {
+    public InputHandler(GamepadEx g1, GamepadEx g2) {
         this.g1 = g1;
         this.g2 = g2;
     }

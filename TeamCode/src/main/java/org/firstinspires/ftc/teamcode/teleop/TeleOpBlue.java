@@ -13,7 +13,7 @@ import org.firstinspires.ftc.teamcode.configs.ControlsConfig;
 import org.firstinspires.ftc.teamcode.configs.LocalizationConfig;
 import org.firstinspires.ftc.teamcode.configs.ShooterConfig;
 import org.firstinspires.ftc.teamcode.teleop.subsystems.*;
-import org.firstinspires.ftc.teamcode.tools.PriorityInputHandler;
+import org.firstinspires.ftc.teamcode.tools.InputHandler;
 import org.firstinspires.ftc.teamcode.tools.localization.MecanumLocalizer;
 
 import java.util.List;
@@ -25,7 +25,7 @@ public class TeleOpBlue extends CommandOpMode {
     private IntakeSubsystem intake;
     private HoodSubsystem hood;
 
-    private PriorityInputHandler inputHandler;
+    private InputHandler inputHandler;
     private GamepadEx g1, g2;
     private VoltageSensor batteryVoltageSensor;
     private List<LynxModule> allHubs;
@@ -77,7 +77,7 @@ public class TeleOpBlue extends CommandOpMode {
 
         g1 = new GamepadEx(gamepad1);
         g2 = new GamepadEx(gamepad2);
-        inputHandler = new PriorityInputHandler(g1, g2);
+        inputHandler = new InputHandler(g1, g2);
 
         batteryVoltageSensor = hardwareMap.voltageSensor.iterator().next();
 
@@ -269,16 +269,17 @@ public class TeleOpBlue extends CommandOpMode {
             double d = Math.max(ShooterConfig.MIN_COMP_DISTANCE,
                     Math.min(effectiveDist, ShooterConfig.MAX_COMP_DISTANCE));
             double targetRpm = ShooterConfig.hoodTuneAngle(d);
-            telemetry.addLine(String.format("Poly %.0fcm -> %.0f RPM | act=%.0f raw=%.0f t/s",
+            telemetry.addLine(String.format("Poly %.0fcm -> %.0f RPM | L=%.0f R=%.0f raw=%.0f t/s",
                     d, targetRpm,
-                    shooter.getShooterVelocityRpm(), shooter.getRawLauncherTicksPerSec()));
+                    shooter.getLeftShooterRpm(), shooter.getRightShooterRpm(),
+                    shooter.getRawLauncherTicksPerSec()));
             telemetry.addLine(String.format("Hood poly=%.2f actual=%.2f | CPR=%d",
                     ShooterConfig.hoodPitch(d), hood.getPosition(),
                     (int) ShooterConfig.SHOOTER_ENCODER_EVENTS_PER_REV));
         } else {
-            telemetry.addLine(String.format("Shooter act=%.0f target=%.0f RPM | raw=%.0f t/s",
-                    shooter.getShooterVelocityRpm(), shooter.getEffectiveTargetRpm(),
-                    shooter.getRawLauncherTicksPerSec()));
+            telemetry.addLine(String.format("Shooter L=%.0f R=%.0f target=%.0f RPM | raw=%.0f t/s",
+                    shooter.getLeftShooterRpm(), shooter.getRightShooterRpm(),
+                    shooter.getEffectiveTargetRpm(), shooter.getRawLauncherTicksPerSec()));
         }
 
         Pose2d pose = localizer.getPose();

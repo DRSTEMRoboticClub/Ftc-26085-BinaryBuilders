@@ -1,0 +1,36 @@
+{
+  "pipeline_type": "fiducial",
+  "pipeline_name": "AprilTag-2D",
+
+  "sensor_resolution": "960x720",
+  "fps": 40,
+
+  "exposure_auto": false,
+  "exposure_us": 7500,
+  "sensor_gain": 25,
+  "black_level": 0,
+  "brightness": 0,
+
+  "led_mode": 0,
+
+  "fiducial_family": "tag36h11",
+  "fiducial_marker_size_mm": 101.6,
+  "fiducial_id_filter": [],
+
+  "fiducial_decimate": 2,
+  "fiducial_blur": 0.0,
+  "fiducial_refine_edges": true,
+  "fiducial_threads": 2,
+
+  "compute_3d": false,
+  "solvepnp_enabled": false,
+  "fiducial_pose_estimation": false,
+
+  "neural_enabled": false,
+  "color_enabled": false,
+  "snapscript_enabled": false,
+  "object_detection_enabled": false,
+
+  "stream_mode": 0,
+  "draw_overlays": false
+}

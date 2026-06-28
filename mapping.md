@@ -76,7 +76,7 @@
 | `SHOOTER_P` | 0.001 | Motor PID gain |
 | `SHOOTER_I` | 0.0 | Motor integral term |
 | `SHOOTER_D` | 0.0001 | Motor derivative term |
-| `MAX_LAUNCHER_RPM` | 5000 | Velocity control ceiling (RPM) |
+| `MAX_LAUNCHER_RPM` | 5500 | Velocity control ceiling (RPM) |
 
 ---
 

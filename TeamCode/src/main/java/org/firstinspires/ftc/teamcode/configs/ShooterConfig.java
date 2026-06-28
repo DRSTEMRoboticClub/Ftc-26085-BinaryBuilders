@@ -15,9 +15,13 @@ public class ShooterConfig {
     public static double TURRET_I             = 0.000;
     public static double TURRET_D             = 0.001;
     public static double TURRET_MAX_POWER     = 0.5;   // cap — 45:1 reduction is already slow
-    public static double TURRET_TOLERANCE_DEG = 1.5;   // stop moving when TX is within this of centre
+    public static double TURRET_TOLERANCE_DEG = 3.0;   // deadzone — turret holds when TX is within this (wider = less jitter while shooting)
     // Flip to +1.0 if the turret moves AWAY from the tag instead of toward it.
     public static double TURRET_DIRECTION_SIGN = -1.0;
+    // Counter-turn feed-forward: power added per degree of chassis heading change since last LL
+    // frame. Keeps the turret locked on the tag while the robot is rotating between 10 Hz reads.
+    // Flip to negative if the turret moves WITH the robot instead of against it.
+    public static double HEADING_FF_GAIN = 0.012;
     // Keep old name as alias so holdTurretAtAngle() still compiles
     public static double AUTO_AIM_DEADBAND_DEG = 1.5;
     public static double AUTO_AIM_P_GAIN       = 0.020;
@@ -94,13 +98,13 @@ public class ShooterConfig {
     // encoder ticks/s <-> RPM. This MUST match what the hub actually counts or the closed-loop
     // controller settles at the wrong speed: if this is 2x too high, the displayed RPM reads
     // half of real, the loop drives power until the (halved) reading hits target, and the
-    // flywheel ends up spinning at 2x the commanded RPM.
+    // flywheel ends up spinning at 2xSHOOTER_ENCODER_EVENTS_PER_REV the commanded RPM.
     //
     // Measured empirically: a 3000 RPM command produced ~6000 real RPM with this set to 28,
     // so the true counts/rev is 14 (the hub is not 4x-quadrature decoding this encoder).
     // Re-verify with the "raw t/s" telemetry: real_RPM = raw_t/s * 60 / this value.
     public static double SHOOTER_ENCODER_CYCLES_PER_REV = 7.0;
-    public static double SHOOTER_ENCODER_EVENTS_PER_REV = 14;
+    public static double SHOOTER_ENCODER_EVENTS_PER_REV = 28;
 
     // Manual shooter hold tuning (used from TeleOp controls)
     public static double MANUAL_TARGET_RPM = 3500.0;
