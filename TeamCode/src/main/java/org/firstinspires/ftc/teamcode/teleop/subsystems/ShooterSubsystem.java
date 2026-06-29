@@ -11,6 +11,7 @@ import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.Range;
+import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Pose3D;
 import org.firstinspires.ftc.teamcode.configs.HardwareConfig;
@@ -65,8 +66,16 @@ public class ShooterSubsystem extends SubsystemBase {
     // TX, distance, and visible-IDs are pre-extracted into primitives so every getter
     // is a plain field read with no list iteration or object allocation per call.
     private LLResult cachedResult = null;
-    private double cachedTxDeg = Double.NaN;   // NaN = tracked tag not visible
-    private double cachedDistCm = -1.0;        // -1 = tag not visible or below horizon
+    // cachedTxDeg / cachedDistCm are corrected for TARGET_BEHIND_CM / TARGET_ABOVE_CM so
+    // every downstream consumer (turret PID, distance polynomial) aims at the target point.
+    private double cachedTxDeg = Double.NaN;   // corrected TX to target; NaN = tag not visible
+    private double cachedDistCm = -1.0;        // corrected distance to target; -1 = not visible
+    private double lastGoodDistCm = -1.0;      // last valid cachedDistCm; used when 3D pose is unavailable
+    private double cachedRawTxDeg = Double.NaN; // raw LL TX to tag centre (for diagnostics)
+    // Camera-space 3D components of the tag centre (cm). Set by distanceFromFiducial().
+    private double cachedTagXCm = Double.NaN;  // lateral (right)
+    private double cachedTagYCm = Double.NaN;  // vertical (up in camera space)
+    private double cachedTagZCm = Double.NaN;  // depth (forward)
     private String cachedVisibleTagIds = "none";
     // Diagnostics (cached so they survive cachedResult being released each loop in TeleOp).
     private int     cachedFiducialCount = 0;   // how many AprilTags the last read saw at all
@@ -281,8 +290,33 @@ public class ShooterSubsystem extends SubsystemBase {
                         : (ShooterConfig.TRACK_ANY_TAG ? largest : null);
                 if (use != null) {
                     cachedTrackedId = use.getFiducialId();
-                    cachedTxDeg = use.getTargetXDegrees();
-                    cachedDistCm = distanceFromFiducial(use);
+                    cachedRawTxDeg  = use.getTargetXDegrees();
+                    cachedTxDeg     = cachedRawTxDeg;
+                    cachedDistCm    = distanceFromFiducial(use); // fills cachedTagX/Y/ZCm, raw distance to tag centre
+
+                    // Fall back to last known distance if 3D pose solver failed this frame.
+                    if (cachedDistCm <= 0 && lastGoodDistCm > 0) {
+                        cachedDistCm = lastGoodDistCm;
+                    }
+
+                    // Primary: full 6-DOF rotation — correct at any viewing angle.
+                    // Fallback: reconstruct X/Z from raw TX + distance (no orientation data).
+                    double[] target = computeTargetCameraSpace(use);
+                    if (target != null) {
+                        cachedTxDeg  = Math.toDegrees(Math.atan2(target[0], target[2]));
+                        cachedDistCm = Math.sqrt(target[0]*target[0] + target[1]*target[1] + target[2]*target[2]);
+                        lastGoodDistCm = cachedDistCm;
+                    } else if (cachedDistCm > 0) {
+                        double txRad = Math.toRadians(cachedRawTxDeg);
+                        double tagXCm = cachedDistCm * Math.sin(txRad);
+                        double tagZCm = cachedDistCm * Math.cos(txRad);
+                        double tZ = tagZCm - ShooterConfig.TARGET_BEHIND_CM;
+                        double tY = ShooterConfig.TARGET_ABOVE_CM;
+                        cachedTxDeg  = Math.toDegrees(Math.atan2(tagXCm, tZ));
+                        cachedDistCm = Math.sqrt(tagXCm*tagXCm + tZ*tZ + tY*tY);
+                        lastGoodDistCm = cachedDistCm;
+                    }
+
                     lastTrackedTagMs = now;
                     tagHeld = false;
                     return; // fresh lock — done
@@ -296,10 +330,14 @@ public class ShooterSubsystem extends SubsystemBase {
         if (lastTrackedTagMs != 0 && (now - lastTrackedTagMs) <= ShooterConfig.TAG_HOLD_MS) {
             tagHeld = true;            // keep cachedTxDeg / cachedDistCm / cachedTrackedId as-is
         } else {
-            cachedTxDeg = Double.NaN;
-            cachedDistCm = -1.0;
+            cachedTxDeg    = Double.NaN;
+            cachedRawTxDeg = Double.NaN;
+            cachedDistCm   = -1.0;
             cachedTrackedId = -1;
             cachedDistSource = "none";
+            cachedTagXCm = Double.NaN;
+            cachedTagYCm = Double.NaN;
+            cachedTagZCm = Double.NaN;
             tagHeld = false;
         }
     }
@@ -497,9 +535,14 @@ public class ShooterSubsystem extends SubsystemBase {
         return lastTurretPower;
     }
 
-    /** TX (horizontal offset, degrees) of the tracked tag from camera centre. Null if not seen. */
+    /** Corrected TX (degrees) to the configured target point (behind/above the tag). Null if no tag. */
     public Double getTrackedTagTx() {
         return Double.isNaN(cachedTxDeg) ? null : cachedTxDeg;
+    }
+
+    /** Raw Limelight TX (degrees) to the tag centre, before target-point correction. Null if no tag. */
+    public Double getRawTagTx() {
+        return Double.isNaN(cachedRawTxDeg) ? null : cachedRawTxDeg;
     }
 
     /**
@@ -691,24 +734,86 @@ public class ShooterSubsystem extends SubsystemBase {
         return turretAtLimit;
     }
 
-    /** Camera-to-tag distance (cm) for a single fiducial, taken ONLY from the Limelight's
-     *  inbuilt 3D pose (SolvePnP). No on-robot TY/height computation — the pipeline must have
-     *  3D enabled (fiducial_skip3d:0). Returns -1 if the 3D pose is unavailable. */
+    /**
+     * Returns the 3D camera-space position {x, y, z} (cm) of the aim target:
+     * TARGET_BEHIND_CM behind and TARGET_ABOVE_CM above the AprilTag face.
+     *
+     * Uses the full 6-DOF tag orientation from SolvePnP so the offset is rotated into
+     * world-correct camera-space at any viewing angle.  Plain "add to Z" is only accurate
+     * when the robot faces the tag perpendicularly; this method handles side approaches.
+     *
+     * Tag-local frame (AprilTag standard): X right, Y up, Z out from front face toward camera.
+     * "Into the goal" = −Z in tag frame.  Rotation order: ZYX Euler (yaw→pitch→roll).
+     *
+     * Returns null when the full pose (position + orientation) is unavailable.
+     */
+    private double[] computeTargetCameraSpace(LLResultTypes.FiducialResult f) {
+        try {
+            Pose3D pose = f.getTargetPoseCameraSpace();
+            if (pose == null || pose.getPosition() == null || pose.getOrientation() == null)
+                return null;
+
+            double tx = pose.getPosition().toUnit(DistanceUnit.CM).x;
+            double ty = pose.getPosition().toUnit(DistanceUnit.CM).y;
+            double tz = Math.abs(pose.getPosition().toUnit(DistanceUnit.CM).z); // positive = in front
+            if (tz < 1.0) return null; // sanity check — tag at 0 depth is bad data
+
+            double yaw   = Math.toRadians(pose.getOrientation().getYaw(AngleUnit.DEGREES));
+            double pitch = Math.toRadians(pose.getOrientation().getPitch(AngleUnit.DEGREES));
+            double roll  = Math.toRadians(pose.getOrientation().getRoll(AngleUnit.DEGREES));
+
+            // Rotation matrix R (tag frame → camera frame), ZYX Euler: R = Rz(yaw)·Ry(pitch)·Rx(roll)
+            double cy = Math.cos(yaw),   sy = Math.sin(yaw);
+            double cp = Math.cos(pitch), sp = Math.sin(pitch);
+            double cr = Math.cos(roll),  sr = Math.sin(roll);
+
+            double r00 = cy*cp,  r01 = cy*sp*sr - sy*cr,  r02 = cy*sp*cr + sy*sr;
+            double r10 = sy*cp,  r11 = sy*sp*sr + cy*cr,  r12 = sy*sp*cr - cy*sr;
+            double r20 = -sp,    r21 = cp*sr,              r22 = cp*cr;
+
+            // Target in tag-local frame: centred (x=0), ABOVE_CM up (+Y), BEHIND_CM into goal (−Z).
+            double ox = 0.0;
+            double oy = ShooterConfig.TARGET_ABOVE_CM;
+            double oz = ShooterConfig.TARGET_BEHIND_CM; // tag +Z points toward camera; goal is −Z
+
+            // p_camera = R · p_tag + t_tag
+            double targetX = r00*ox + r01*oy + r02*oz + tx;
+            double targetY = r10*ox + r11*oy + r12*oz + ty;
+            double targetZ = r20*ox + r21*oy + r22*oz + tz;
+
+            if (targetZ <= 0) return null; // target ended up behind camera — bad orientation data
+            return new double[]{targetX, targetY, targetZ};
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    /**
+     * Camera-to-tag distance (cm) for a single fiducial, taken ONLY from the Limelight's
+     * inbuilt 3D pose (SolvePnP). Also populates cachedTagXCm/YCm/ZCm so the caller can
+     * compute target-point corrections. Pipeline must have 3D enabled (fiducial_skip3d:0).
+     * Returns -1 if the 3D pose is unavailable (clears the component fields to NaN).
+     */
     private double distanceFromFiducial(LLResultTypes.FiducialResult f) {
         try {
             Pose3D camSpace = f.getTargetPoseCameraSpace();
             if (camSpace != null && camSpace.getPosition() != null) {
-                double xRight = camSpace.getPosition().toUnit(DistanceUnit.CM).x; // +right (cm)
-                double zFwd   = camSpace.getPosition().toUnit(DistanceUnit.CM).z; // +forward (cm)
+                double xRight = camSpace.getPosition().toUnit(DistanceUnit.CM).x; // +right
+                double yUp    = camSpace.getPosition().toUnit(DistanceUnit.CM).y; // +up
+                double zFwd   = camSpace.getPosition().toUnit(DistanceUnit.CM).z; // +forward
                 double d = Math.hypot(xRight, zFwd);
                 if (d > 0 && !Double.isNaN(d) && !Double.isInfinite(d)) {
+                    cachedTagXCm = xRight;
+                    cachedTagYCm = yUp;
+                    cachedTagZCm = zFwd;
                     cachedDistSource = "3D";
                     return d;
                 }
             }
         } catch (Throwable ignored) { }
-        // 3D pose not available — do NOT fall back to TY geometry. Surface it instead so it is
-        // obvious the pipeline's 3D pose is off (fiducial_skip3d) rather than silently guessing.
+        cachedTagXCm = Double.NaN;
+        cachedTagYCm = Double.NaN;
+        cachedTagZCm = Double.NaN;
         cachedDistSource = "none";
         return -1;
     }
@@ -761,9 +866,11 @@ public class ShooterSubsystem extends SubsystemBase {
         if (!limelightStarted) return "LL not started (toggled off? USB?)";
         // Built from cached primitives so it works in TeleOp, where cachedResult is released
         // each loop. Shows exactly why there may be no lock OR no distance.
-        return String.format("fids=%d valid=%b ids=[%s] track=%d lock=%d dist=%.0f(%s)%s",
+        return String.format("fids=%d valid=%b ids=[%s] track=%d lock=%d rawTx=%.1f tx=%.1f dist=%.0f(%s)%s",
                 cachedFiducialCount, cachedResultValid, cachedVisibleTagIds,
                 ShooterConfig.TRACKED_TAG_ID, cachedTrackedId,
+                Double.isNaN(cachedRawTxDeg) ? 0.0 : cachedRawTxDeg,
+                Double.isNaN(cachedTxDeg) ? 0.0 : cachedTxDeg,
                 cachedDistCm, cachedDistSource, tagHeld ? " HELD" : "");
     }
 

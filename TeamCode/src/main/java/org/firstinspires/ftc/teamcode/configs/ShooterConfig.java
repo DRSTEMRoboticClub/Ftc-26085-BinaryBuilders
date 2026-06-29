@@ -11,11 +11,11 @@ public class ShooterConfig {
     // D = 0.001 → damps overshoot as the turret approaches centre. Raise if it still overshoots.
     // Tune live from FTC Dashboard without redeploying.
     public static double CAMERA_HALF_FOV_DEG = 29.8;   // Limelight 3A horizontal half-FOV (for holdTurretAtAngle)
-    public static double TURRET_P             = 0.020;
-    public static double TURRET_I             = 0.000;
-    public static double TURRET_D             = 0.001;
+    public static double TURRET_P             = 0.020;  // slightly above original; more output at small errors
+    public static double TURRET_I             = 0.000;  // zero: integral winds up against the deadzone causing oscillation
+    public static double TURRET_D             = 0.002;  // low: LL updates at 10 Hz; high D amplifies frame noise into jitter
     public static double TURRET_MAX_POWER     = 0.5;   // cap — 45:1 reduction is already slow
-    public static double TURRET_TOLERANCE_DEG = 3.0;   // deadzone — turret holds when TX is within this (wider = less jitter while shooting)
+    public static double TURRET_TOLERANCE_DEG = 1.5;   // tighter than original 3° but wide enough to avoid bang-bang jitter
     // Flip to +1.0 if the turret moves AWAY from the tag instead of toward it.
     public static double TURRET_DIRECTION_SIGN = 1.0;
     // Counter-turn feed-forward: power added per degree of chassis heading change since last LL
@@ -25,7 +25,7 @@ public class ShooterConfig {
     // Keep old name as alias so holdTurretAtAngle() still compiles
     public static double AUTO_AIM_DEADBAND_DEG = 1.5;
     public static double AUTO_AIM_P_GAIN       = 0.020;
-    public static double AUTO_AIM_MIN_POWER    = 0.05;
+    public static double AUTO_AIM_MIN_POWER    = 0.035; // lowered: reduces bang-bang oscillation near setpoint
     public static double AUTO_AIM_MAX_POWER    = 0.5;
     public static int TRACKED_TAG_ID = 20; // Blue alliance hub tag; Red = 24
     public static int APRILTAG_PIPELINE = 0;
@@ -70,6 +70,17 @@ public class ShooterConfig {
     //   crashes with this TRUE but NOT with it FALSE  → the Limelight (power/USB) is the cause.
     //   crashes either way                            → the cause is elsewhere.
     public static boolean LIMELIGHT_ENABLED = true;
+
+    // ── Target-point offset from AprilTag face centre ──────────────────────────────────────
+    // The turret aims at this point instead of the tag centre. Distance compensation (RPM +
+    // hood polynomial) also uses the corrected distance to this point. Both tunable live from
+    // FTC Dashboard; set to 0 to revert to aiming at the tag centre.
+    //
+    // NOTE: TARGET_ABOVE_CM shifts the true vertical aim angle but the hoodPitch/hoodTuneAngle
+    // polynomials were calibrated at TAG_CENTER_HEIGHT_CM. If the target height changes
+    // significantly, re-calibrate those polynomials at the new target height.
+    public static double TARGET_BEHIND_CM = 25;  // cm behind the tag face (into the goal)
+    public static double TARGET_ABOVE_CM  = 25.0;  // cm above the tag centre (upward)
 
     public static double STOPPER_CLOSED = 0.0;
     public static double STOPPER_OPEN = 1.0;
@@ -121,20 +132,20 @@ public class ShooterConfig {
     // (Horner form — one multiply-add per coefficient, cheap every loop).
     //
     // Calibration data (motorValues.md) — cubic fit through these 4 points:
-    //   95 cm → 3900 RPM, pitch 0.145
-    //  125 cm → 4200 RPM, pitch 0.085
-    //  150 cm → 4400 RPM, pitch 0.025
-    //  195 cm → 4900 RPM, pitch 0.000
+    //  115 cm → 3850 RPM, pitch 0.310
+    //  150 cm → 4200 RPM, pitch 0.172
+    //  180 cm → 4450 RPM, pitch 0.000
+    //  200 cm → 4800 RPM, pitch 0.000
     //
-    // TRUE — the re-fit polynomial (95–195 cm data) now drives RPM + hood pitch automatically
-    // whenever the goal tag is in view. The gamepad-2 manual controls still work as a fallback
-    // when there is no tag. Toggle via FTC Dashboard.
+    // TRUE — the polynomial drives RPM + hood pitch automatically whenever the goal tag
+    // is in view. The gamepad-2 manual controls still work as a fallback when there is
+    // no tag. Toggle via FTC Dashboard.
     public static boolean USE_DISTANCE_COMPENSATION = true;
 
     // Polynomial input is clamped to this range (cm) to prevent extrapolation errors.
-    // Calibration data spans 95–195 cm; clamp to it so the cubic never extrapolates.
-    public static double MIN_COMP_DISTANCE = 95.0;
-    public static double MAX_COMP_DISTANCE = 195.0;
+    // Calibration data spans 115–200 cm; clamp to it so the cubic never extrapolates.
+    public static double MIN_COMP_DISTANCE = 115.0;
+    public static double MAX_COMP_DISTANCE = 200.0;
 
     // ── Camera geometry for TY-based distance (no 3D pose solver needed) ─────
     // Replaces getTargetPoseCameraSpace() with a single tan() call — orders of
@@ -152,23 +163,21 @@ public class ShooterConfig {
     public static double CAMERA_TILT_DEG      = 0.0;    // camera is level
 
     /**
-     * Flywheel target (RPM) for a given camera-to-tag distance in centimetres.
-     * Cubic through (95,3900) (125,4200) (150,4400) (195,4900):
-     * rpm = 8.0808e-4·d³ − 3.3535e-1·d² + 5.4263e1·d + 1078.8
+     * Flywheel target (RPM) for a given distance to the aim target in centimetres.
+     * Cubic through (115,3850) (150,4200) (180,4450) (200,4800) — Horner form.
      */
     public static double hoodTuneAngle(double d) {
-        return ((8.08080808e-04 * d - 3.35353535e-01) * d + 5.42626263e+01) * d
-                + 1.07878788e+03;
+        return ((2.45852187028656e-3 * d - 1.11968325791856) * d + 176.475867269986) * d
+                - 5376.01809954748;
     }
 
     /**
-     * Hood pitch servo position [0.0 .. 1.0] for a given distance in centimetres.
-     * Cubic through (95,0.145) (125,0.085) (150,0.025) (195,0.000):
-     * pitch = 3.3622e-7·d³ − 1.3167e-4·d² + 1.4688e-2·d − 3.5025e-1
+     * Hood pitch servo position [0.0 .. 1.0] for a given distance to the aim target in centimetres.
+     * Cubic through (115,0.310) (150,0.172) (180,0.000) (200,0.000) — Horner form.
      */
     public static double hoodPitch(double d) {
-        double p = ((3.36219336e-07 * d - 1.31673882e-04) * d + 1.46878427e-02) * d
-                - 3.50254329e-01;
+        double p = ((1.67308769661711e-6 * d - 7.720698125404e-4) * d + 0.112023822452058) * d
+                - 4.90667356173238;
         return Math.max(0.0, Math.min(1.0, p));
     }
 }
