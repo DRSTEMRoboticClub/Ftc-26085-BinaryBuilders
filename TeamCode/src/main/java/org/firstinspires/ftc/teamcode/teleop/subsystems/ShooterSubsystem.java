@@ -464,6 +464,10 @@ public class ShooterSubsystem extends SubsystemBase {
         autoAimEnabled = !autoAimEnabled;
     }
 
+    public void setAutoAimEnabled(boolean enabled) {
+        autoAimEnabled = enabled;
+    }
+
     public void toggleLimelight() {
         if (limelight == null) return;
         if (limelightStarted) {

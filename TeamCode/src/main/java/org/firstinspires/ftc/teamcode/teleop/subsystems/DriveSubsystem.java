@@ -124,6 +124,30 @@ public class DriveSubsystem extends SubsystemBase {
         targetHeading = 0;
     }
 
+    /** Set the heading the PID corrects toward without touching the IMU. */
+    public void setTargetHeading(double deg) {
+        targetHeading = deg;
+    }
+
+    /** Zero all drive motor powers (park mode). */
+    public void stop() {
+        drive.stop();
+    }
+
+    /** Robot-centric drive — strafe/forward/turn are relative to the robot frame. */
+    public void driveRobotCentric(double strafe, double forward, double turn) {
+        updateHeading();
+        strafe  = Math.abs(strafe)  < DriveConfig.JOYSTICK_DEADZONE ? 0 : strafe;
+        forward = Math.abs(forward) < DriveConfig.JOYSTICK_DEADZONE ? 0 : forward;
+        turn    = Math.abs(turn)    < DriveConfig.JOYSTICK_DEADZONE ? 0 : turn;
+
+        double speedMultiplier = isVerySlow ? DriveConfig.VERY_SLOW_MODE_SCALE
+                : isSlowMode               ? DriveConfig.SLOW_MODE_SPEED_SCALE
+                :                            DriveConfig.NORMAL_SPEED_SCALE;
+        double turnMultiplier = speedMultiplier * DriveConfig.TURN_SCALE;
+        drive.driveRobotCentric(strafe * speedMultiplier, forward * speedMultiplier, turn * turnMultiplier);
+    }
+
     private double normalizeAngle(double angle) {
         while (angle > 180) angle -= 360;
         while (angle <= -180) angle += 360;

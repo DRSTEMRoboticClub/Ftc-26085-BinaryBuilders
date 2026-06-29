@@ -10,10 +10,8 @@ import java.util.Map;
 
 public class InputHandler {
     private final GamepadEx g1, g2;
-    private boolean g1HasPriority = true;
-    private boolean manualMode = false;
-    private boolean verySlowMode = false;
-    private boolean shooterHoldMode = false;
+    private boolean fieldCentric = true;       // G1 Y = field centric (default), G1 X = robot centric
+    private boolean shooterHoldMode = false;   // true while G2 left trigger is held (autoaim + spin-up)
     private final Map<String, Long> nextRepeatTimesMs = new HashMap<>();
 
     private double lastForward, lastStrafe, lastTurn;
@@ -23,189 +21,138 @@ public class InputHandler {
         this.g2 = g2;
     }
 
-    public boolean isG1Priority() {
-        return g1HasPriority;
-    }
-
+    /** True when NOT in autoaim mode (G2 left trigger not held) — hood uses manual joystick. */
     public boolean isManualMode() {
-        return manualMode;
+        return !shooterHoldMode;
     }
 
+    /** True while G2 left trigger is held (autoaim + polynomial spin-up active). */
     public boolean isShooterHoldMode() {
         return shooterHoldMode;
     }
 
-    public double getManualShooterTargetRpm() {
-        return ShooterConfig.MANUAL_TARGET_RPM;
+    public boolean isFieldCentric() {
+        return fieldCentric;
     }
 
     public double getForward() { return lastForward; }
     public double getStrafe() { return lastStrafe; }
     public double getTurn() { return lastTurn; }
 
-    public boolean isG1Active() {
-        return Math.abs(g1.getLeftY()) > ControlsConfig.G1_DEADZONE ||
-               Math.abs(g1.getLeftX()) > ControlsConfig.G1_DEADZONE ||
-               Math.abs(g1.getRightX()) > ControlsConfig.G1_DEADZONE ||
-               g1.getTrigger(GamepadKeys.Trigger.RIGHT_TRIGGER) > ControlsConfig.TRIGGER_THRESHOLD ||
-               g1.getTrigger(GamepadKeys.Trigger.LEFT_TRIGGER) > ControlsConfig.TRIGGER_THRESHOLD ||
-               g1.gamepad.a || g1.gamepad.b || g1.gamepad.x || g1.gamepad.y ||
-               g1.gamepad.dpad_up || g1.gamepad.dpad_down || g1.gamepad.dpad_left || g1.gamepad.dpad_right ||
-               g1.gamepad.left_bumper || g1.gamepad.right_bumper;
-    }
-
-    public boolean isG2Active() {
-        return Math.abs(g2.getLeftY()) > ControlsConfig.G2_DEADZONE ||
-               Math.abs(g2.getLeftX()) > ControlsConfig.G2_DEADZONE ||
-               Math.abs(g2.getRightX()) > ControlsConfig.G2_DEADZONE ||
-               g2.getTrigger(GamepadKeys.Trigger.RIGHT_TRIGGER) > ControlsConfig.TRIGGER_THRESHOLD ||
-               g2.getTrigger(GamepadKeys.Trigger.LEFT_TRIGGER) > ControlsConfig.TRIGGER_THRESHOLD ||
-               g2.gamepad.a || g2.gamepad.b || g2.gamepad.x || g2.gamepad.y ||
-               g2.gamepad.dpad_up || g2.gamepad.dpad_down || g2.gamepad.dpad_left || g2.gamepad.dpad_right ||
-               g2.gamepad.left_bumper || g2.gamepad.right_bumper;
-    }
-
     public void update(DriveSubsystem drive, IntakeSubsystem intake, ShooterSubsystem shooter, HoodSubsystem hood) {
         g1.readButtons();
         g2.readButtons();
 
-        // Reset IMU Heading (G1 B)
-        if (g1.wasJustPressed(GamepadKeys.Button.B)) {
-            drive.resetHeading();
-        }
-
-        // Emergency Logic (A button on either)
+        // Emergency: A on either — reverse intake, reverse launcher, open stopper
         if (g1.gamepad.a || g2.gamepad.a) {
             intake.setPower(IntakeConfig.INTAKE_REV_POWER);
             shooter.setShooterVelocityRpm(-0.5 * ShooterConfig.MAX_LAUNCHER_RPM);
             shooter.setStopperPosition(ShooterConfig.STOPPER_OPEN);
+            shooter.setAutoAimEnabled(false);
+            shooter.updatePID();
             return;
         }
 
-        // Determine Active Controller for Movement
-        GamepadEx moveController;
-        if (g1HasPriority) {
-            moveController = isG1Active() ? g1 : g2;
+        // ── Controller 1: Drive ──────────────────────────────────────────────
+
+        // Left Bumper: snap to 0° heading — held continuously so PID corrects until released
+        if (g1.gamepad.left_bumper) {
+            drive.setTargetHeading(0);
+        }
+
+        // Right Bumper: slow mode while held
+        drive.setSlowMode(g1.gamepad.right_bumper);
+
+        // X: robot centric  |  Y: field centric
+        if (g1.wasJustPressed(GamepadKeys.Button.X)) fieldCentric = false;
+        if (g1.wasJustPressed(GamepadKeys.Button.Y)) fieldCentric = true;
+
+        // B: park (disable drive while held)
+        if (g1.gamepad.b) {
+            drive.stop();
+            lastStrafe = 0; lastForward = 0; lastTurn = 0;
         } else {
-            moveController = isG2Active() ? g2 : g1;
+            lastStrafe  = -g1.getLeftX();
+            lastForward = -g1.getLeftY();
+            // Suppress manual turn while snapping to heading so PID has full authority
+            lastTurn    = g1.gamepad.left_bumper ? 0 : -g1.getRightX();
+            if (fieldCentric) {
+                drive.driveFieldCentric(lastStrafe, lastForward, lastTurn);
+            } else {
+                drive.driveRobotCentric(lastStrafe, lastForward, lastTurn);
+            }
         }
 
-        // Slow Mode (G1 Right Bumper)
-        drive.setSlowMode(g1.getButton(GamepadKeys.Button.RIGHT_BUMPER));
+        // Left Trigger: intake while held
+        boolean intaking = g1.getTrigger(GamepadKeys.Trigger.LEFT_TRIGGER) > ControlsConfig.TRIGGER_THRESHOLD;
 
-        // Very Slow Mode (G2 Left Button)
-        if (g2.wasJustPressed(GamepadKeys.Button.LEFT_BUMPER)) {
-            verySlowMode = !verySlowMode;
+        // ── Controller 2: Shooter / Turret / Hood ───────────────────────────
+
+        // Left Trigger: autoaim + start launcher while held (polynomial RPM via applyShooterCompensation)
+        shooterHoldMode = g2.getTrigger(GamepadKeys.Trigger.LEFT_TRIGGER) > ControlsConfig.TRIGGER_THRESHOLD;
+        shooter.setAutoAimEnabled(shooterHoldMode);
+
+        // Right Joystick X: turret manual
+        double turretManual = -g2.getRightX();
+        shooter.runTurretControl(
+                Math.abs(turretManual) > ControlsConfig.G2_DEADZONE ? turretManual : 0,
+                shooterHoldMode);
+
+        // Left Joystick Y: hood up/down proportional (auto-hood via polynomial when autoaim active)
+        double hoodInput = g2.getLeftY();
+        if (Math.abs(hoodInput) > ControlsConfig.G2_DEADZONE) {
+            hood.adjustPosition(hoodInput * HoodConfig.HOOD_MANUAL_RATE);
         }
-        drive.setVerySlow(verySlowMode);
 
-        // Drivetrain (Field Centric)
-        // Left Stick: Move, Right Stick X: Turn
-        lastStrafe  = -moveController.getLeftX();
-        lastForward = -moveController.getLeftY();
-        lastTurn    = -moveController.getRightX();
-        drive.driveFieldCentric(lastStrafe, lastForward, lastTurn);
-
-        // Shooter Logic (G1 Primary)
-        // G2 Y toggles RPM hold mode for repeatable shooting while tuning.
-        if (g2.wasJustPressed(GamepadKeys.Button.Y)) {
-            shooterHoldMode = !shooterHoldMode;
-        }
-
-        // Right Trigger - ramp launcher to tuned target RPM while held.
-        double rightTriggerPower = g1.getTrigger(GamepadKeys.Trigger.RIGHT_TRIGGER);
-        boolean rightTriggerPressed = rightTriggerPower > ControlsConfig.TRIGGER_THRESHOLD;
-        boolean shootPressed = g1.getButton(GamepadKeys.Button.LEFT_BUMPER);
-        if (shooterHoldMode || shootPressed || rightTriggerPressed) {
-            shooter.setShooterVelocityRpm(getManualShooterTargetRpm());
+        // Launcher RPM:
+        //   Left Trigger held (autoaim)  → polynomial override set by applyShooterCompensation;
+        //                                  setShooterVelocityRpm is ignored while override is active,
+        //                                  but we set NEAR_RPM here as a fallback when no tag is visible
+        //   Left Bumper held             → near RPM (manual, no autoaim)
+        //   Right Bumper held            → far RPM  (manual, no autoaim)
+        //   Otherwise                    → stop
+        if (shooterHoldMode) {
+            shooter.setShooterVelocityRpm(ShooterConfig.NEAR_RPM); // ignored if polynomial override is active
+        } else if (g2.gamepad.left_bumper) {
+            shooter.setShooterVelocityRpm(ShooterConfig.NEAR_RPM);
+        } else if (g2.gamepad.right_bumper) {
+            shooter.setShooterVelocityRpm(ShooterConfig.FAR_RPM);
         } else {
             shooter.setShooterVelocityRpm(0);
         }
-
-        // Run flywheel PID every loop regardless of trigger state
         shooter.updatePID();
 
-        // Left Bumper - Shoot (Open Stopper + Auto Intake)
-        if (shootPressed) {
+        // Right Trigger: shoot (open stopper + feed intake); takes priority over plain intake
+        boolean shooting = g2.getTrigger(GamepadKeys.Trigger.RIGHT_TRIGGER) > ControlsConfig.TRIGGER_THRESHOLD;
+        if (shooting) {
             shooter.setStopperPosition(ShooterConfig.STOPPER_OPEN);
             intake.setPower(IntakeConfig.INTAKE_FWD_POWER);
         } else {
             shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
-
-            // Intake Logic (G1 Left Trigger) when not shooting
-            double intakePower = 0;
-            if (g1.getTrigger(GamepadKeys.Trigger.LEFT_TRIGGER) > ControlsConfig.TRIGGER_THRESHOLD) {
-                intakePower = IntakeConfig.INTAKE_FWD_POWER;
-            }
-            intake.setPower(intakePower);
+            intake.setPower(intaking ? IntakeConfig.INTAKE_FWD_POWER : 0);
         }
 
-        // Controller 2 Intake/Outtake
-        // Right Trigger - Intake, Left Trigger - Outtake
-        double g2IntakePower = 0;
-        if (g2.getTrigger(GamepadKeys.Trigger.RIGHT_TRIGGER) > ControlsConfig.TRIGGER_THRESHOLD) {
-            g2IntakePower = IntakeConfig.INTAKE_FWD_POWER;
-        } else if (g2.getTrigger(GamepadKeys.Trigger.LEFT_TRIGGER) > ControlsConfig.TRIGGER_THRESHOLD) {
-            g2IntakePower = IntakeConfig.INTAKE_REV_POWER;
-        }
-
-        // G2 intake takes priority over G1 when G2 is actively using it
-        if (Math.abs(g2IntakePower) > 0.1) {
-            intake.setPower(g2IntakePower);
-        }
-
-        // Toggle Manual/Auto Tracking (G1 X)
-        if (g1.wasJustPressed(GamepadKeys.Button.X)) {
-            manualMode = !manualMode;
-            shooter.toggleAutoAim();
-        }
-
-        // Toggle Limelight on/off (G2 X) — use to A/B test LL power draw causing disconnect
-        if (g2.wasJustPressed(GamepadKeys.Button.X)) {
-            shooter.toggleLimelight();
-        }
-
+        // ── G2 D-pad: live RPM tuning ────────────────────────────────────────
+        // Left/Right: adjust near RPM  |  Up/Down: adjust far RPM
         long now = System.currentTimeMillis();
-
-        // ── Manual shooter + hood tuning on G2 (distance polynomial is off) ──────
-        // Hood pitch — G2 D-pad Up/Down (rate-limited so a held button doesn't slam the servo).
-        // Same direction convention as the G1 hood control below (up = -increment).
-        if (shouldStep("g2_dpad_up", g2.gamepad.dpad_up,
-                g2.wasJustPressed(GamepadKeys.Button.DPAD_UP), now)) {
-            hood.adjustPosition(-HoodConfig.HOOD_INCREMENT);
-        } else if (shouldStep("g2_dpad_down", g2.gamepad.dpad_down,
-                g2.wasJustPressed(GamepadKeys.Button.DPAD_DOWN), now)) {
-            hood.adjustPosition(HoodConfig.HOOD_INCREMENT);
-        }
-
-        // Target shooter RPM ("turret power") — G2 D-pad Right/Left, in steps of 50 RPM.
-        // This is the speed the flywheel PID spins up to when the trigger / hold is active.
         if (shouldStep("g2_dpad_right", g2.gamepad.dpad_right,
                 g2.wasJustPressed(GamepadKeys.Button.DPAD_RIGHT), now)) {
-            ShooterConfig.MANUAL_TARGET_RPM = Math.min(ShooterConfig.MAX_LAUNCHER_RPM,
-                    ShooterConfig.MANUAL_TARGET_RPM + 50.0);
+            ShooterConfig.NEAR_RPM = Math.min(ShooterConfig.MAX_LAUNCHER_RPM,
+                    ShooterConfig.NEAR_RPM + ShooterConfig.RPM_TUNE_STEP_COARSE);
         } else if (shouldStep("g2_dpad_left", g2.gamepad.dpad_left,
                 g2.wasJustPressed(GamepadKeys.Button.DPAD_LEFT), now)) {
-            ShooterConfig.MANUAL_TARGET_RPM = Math.max(0.0,
-                    ShooterConfig.MANUAL_TARGET_RPM - 50.0);
+            ShooterConfig.NEAR_RPM = Math.max(0.0,
+                    ShooterConfig.NEAR_RPM - ShooterConfig.RPM_TUNE_STEP_COARSE);
         }
-
-        // Hood pitch (secondary) — G1 D-pad Up/Down (rate-limited; without shouldStep the servo
-        // would receive ~100 adjustPosition calls/sec while held, slamming to the limit)
-        if (shouldStep("g1_dpad_up", g1.gamepad.dpad_up,
-                g1.wasJustPressed(GamepadKeys.Button.DPAD_UP), now)) {
-            hood.adjustPosition(-HoodConfig.HOOD_INCREMENT);
-        } else if (shouldStep("g1_dpad_down", g1.gamepad.dpad_down,
-                g1.wasJustPressed(GamepadKeys.Button.DPAD_DOWN), now)) {
-            hood.adjustPosition(HoodConfig.HOOD_INCREMENT);
+        if (shouldStep("g2_dpad_up", g2.gamepad.dpad_up,
+                g2.wasJustPressed(GamepadKeys.Button.DPAD_UP), now)) {
+            ShooterConfig.FAR_RPM = Math.min(ShooterConfig.MAX_LAUNCHER_RPM,
+                    ShooterConfig.FAR_RPM + ShooterConfig.RPM_TUNE_STEP_COARSE);
+        } else if (shouldStep("g2_dpad_down", g2.gamepad.dpad_down,
+                g2.wasJustPressed(GamepadKeys.Button.DPAD_DOWN), now)) {
+            ShooterConfig.FAR_RPM = Math.max(0.0,
+                    ShooterConfig.FAR_RPM - ShooterConfig.RPM_TUNE_STEP_COARSE);
         }
-
-        // Turret manual — G1 D-pad Left/Right (always active; overrides auto-aim in runTurretControl)
-        double turretManual = 0;
-        if (g1.gamepad.dpad_left)       turretManual = -1.0;
-        else if (g1.gamepad.dpad_right) turretManual =  1.0;
-        // runTurretControl handles auto-aim logic internally
-        shooter.runTurretControl(turretManual, rightTriggerPower > 0.1);
     }
 
     private boolean shouldStep(String key, boolean pressed, boolean justPressed, long nowMs) {

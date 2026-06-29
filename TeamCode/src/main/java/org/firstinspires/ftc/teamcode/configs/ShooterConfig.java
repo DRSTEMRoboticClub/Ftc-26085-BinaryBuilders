@@ -117,7 +117,11 @@ public class ShooterConfig {
     public static double SHOOTER_ENCODER_CYCLES_PER_REV = 7.0;
     public static double SHOOTER_ENCODER_EVENTS_PER_REV = 28;
 
-    // Manual shooter hold tuning (used from TeleOp controls)
+    // Manual shooter RPM targets (G2 left/right bumper). Tunable via G2 D-pad.
+    public static double NEAR_RPM = 3900.0;  // close shot (~115 cm)
+    public static double FAR_RPM  = 4800.0;  // far shot  (~200 cm)
+
+    // Legacy single-target RPM kept for backward compat with any auto modes that still use it.
     public static double MANUAL_TARGET_RPM = 3500.0;
     public static double RPM_TUNE_STEP_COARSE = 100.0;
     public static double RPM_TUNE_STEP_FINE = 25.0;
@@ -134,8 +138,8 @@ public class ShooterConfig {
     // Calibration data (motorValues.md) — cubic fit through these 4 points:
     //  115 cm → 3850 RPM, pitch 0.310
     //  150 cm → 4200 RPM, pitch 0.172
-    //  180 cm → 4450 RPM, pitch 0.000
-    //  200 cm → 4800 RPM, pitch 0.000
+    //  180 cm → 4600 RPM, pitch 0.000
+    //  200 cm → 5000 RPM, pitch 0.000
     //
     // TRUE — the polynomial drives RPM + hood pitch automatically whenever the goal tag
     // is in view. The gamepad-2 manual controls still work as a fallback when there is
@@ -167,8 +171,8 @@ public class ShooterConfig {
      * Cubic through (115,3850) (150,4200) (180,4450) (200,4800) — Horner form.
      */
     public static double hoodTuneAngle(double d) {
-        return ((2.45852187028656e-3 * d - 1.11968325791856) * d + 176.475867269986) * d
-                - 5376.01809954748;
+        return ((4.91704374057315e-3 * d - 2.29570135746606) * d + 348.873303167421) * d
+                - 12028.0542986425;
     }
 
     /**

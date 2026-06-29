@@ -334,11 +334,8 @@ public class TeleOpBlue extends CommandOpMode {
         double d = Math.max(ShooterConfig.MIN_COMP_DISTANCE,
                             Math.min(dist, ShooterConfig.MAX_COMP_DISTANCE));
 
-        // Only spin up to the polynomial RPM while the driver is actually requesting the shooter
-        // (trigger / left bumper / hold mode) — pre-spinning would waste battery and worsen sag.
-        boolean wantShoot = inputHandler.isShooterHoldMode()
-                || gamepad1.left_bumper
-                || gamepad1.right_trigger > ControlsConfig.TRIGGER_THRESHOLD;
+        // Only spin up to the polynomial RPM while autoaim is active (G2 left trigger held).
+        boolean wantShoot = inputHandler.isShooterHoldMode();
         if (wantShoot) {
             // Raw polynomial RPM — no added boost.
             shooter.setAutoShootRpmOverride(ShooterConfig.hoodTuneAngle(d));

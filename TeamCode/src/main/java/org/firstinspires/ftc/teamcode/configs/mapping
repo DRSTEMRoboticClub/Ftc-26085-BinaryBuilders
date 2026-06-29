@@ -1,0 +1,21 @@
+mapping
+
+controller 1:
+left joystick: move all directional
+right joystick: turn robot (left-right only)
+left trigger: intake while hold
+left bumper: turn to 0 degrees direction (fast)
+right bumper: slow moving mode while hold
+B: park (disable all four driving motors while hold)
+X: set to robot centric
+Y: set to field centric
+A: Emergency release
+
+controller 2:
+left joystick: up/down the hood
+right joystick: left-right turn the turret manually
+left trigger: autoaim and start the launcher motors while hold
+left bumper: if autoaim is not on, start the launcher motors with the near position rpm
+right bumper: if autoaim is not on, start the launcher motors with the far position rpm
+right trigger: shoot
+left arrow keys: left-right: increase/decrease the near position rpm. up-down: increase/decrease the far position rpm

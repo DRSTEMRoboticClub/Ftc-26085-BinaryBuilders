@@ -107,7 +107,7 @@ public class LocalizationConfig {
     /** Stop correcting when tag is within this many degrees of centre (prevents hunting). */
     public static double TURRET_TRACK_DEADBAND_DEG = 2.5;
 
-    public static double TURRET_TRACK_MIN_POWER = 0.05; // low floor — proportional near centre
+    public static double TURRET_TRACK_MIN_POWER = 0.1; // low floor — proportional near centre
 
     /** Max |power| the auto turret tracker will command. */
     public static double TURRET_TRACK_MAX_POWER = 1.0;  // doubled (capped at motor max)
@@ -149,7 +149,7 @@ public class LocalizationConfig {
     public static double TAG_SIZE_IN = 6.5;
 
     /** Max accepted planar distance (cm) for a tag correction to be trusted. */
-    public static double TAG_MAX_TRUST_DISTANCE = 305.0;  // cm  (120 in * 2.54)
+    public static double TAG_MAX_TRUST_DISTANCE = 355.0;  // cm  (120 in * 2.54)
 
     /** Low-pass blend factor when fusing a tag correction into the RR pose
      *  (0 = ignore tag, 1 = snap fully to tag). */
