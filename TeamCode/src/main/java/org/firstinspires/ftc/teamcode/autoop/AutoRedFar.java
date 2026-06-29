@@ -14,59 +14,45 @@ import org.firstinspires.ftc.teamcode.teleop.subsystems.IntakeSubsystem;
 import org.firstinspires.ftc.teamcode.teleop.subsystems.ShooterSubsystem;
 
 /**
- * Blue-alliance far-side autonomous routine. (TEST — not competition-critical)
+ * Red-alliance far-side autonomous routine — mirror of AutoBlueFar.
  *
- * Start = Shoot position: robot begins already at the shooting spot.
- *
- * Path layout (all heading 180°):
- *   step 0  SHOOTING  fire at START (68,6) — already at shoot pos
- *   step 1  PATHING   (68,6)→(39,35)→(8,35)→(68,6)   [intake, pre-spin on return at idx 2]
- *   step 2  SHOOTING  fire at (68,6)
- *   step 3  PATHING   (68,6)→(1,8)→(68,6)             [intake, pre-spin on return at idx 1]
- *   step 4  SHOOTING  fire at (68,6)
+ * Mirror rule: X_red = 141.5 - X_blue, Y unchanged, heading = π - θ_blue (180°→0°).
+ * Tracks AprilTag ID 24 (Red alliance hub).
  */
 @Config
-@Autonomous(name = "Auto Blue Far", group = "Competition")
-public class AutoBlueFar extends LinearOpMode {
+@Autonomous(name = "Auto Red Far", group = "Competition")
+public class AutoRedFar extends LinearOpMode {
 
-    // ── Field poses (heading 180°) ────────────────────, reversed]─────────────────────────
-    private static final double HEADING      = Math.toRadians(180);
-    private static final Pose START_SHOOT    = new Pose(47.000,  10.000, HEADING);
-    private static final Pose BALL1_MID      = new Pose(46.500, 34.000, HEADING);
-    private static final Pose BALL1          = new Pose(15.000, 34.000, HEADING);
-    private static final Pose BALL2          = new Pose(10.000,  6.000, HEADING);
-    private static final Pose SHOOT          = new Pose(55.000, 10.000, HEADING);
-    private static final Pose FINAL          = new Pose(45.000, 15.000, HEADING);
-    private static final Pose GOAL           = new Pose(130.500, 135.000, 0);
+    // ── Field poses (heading 0°: robot faces +X) ──────────────────────────────
+    private static final double HEADING   = Math.toRadians(0);
+    private static final Pose START_SHOOT = new Pose( 94.500, 10.000, HEADING);
+    private static final Pose BALL1_MID   = new Pose( 95.000, 33.000, HEADING);
+    private static final Pose BALL1       = new Pose(126.500, 33.000, HEADING);
+    private static final Pose BALL2       = new Pose(130.500,  6.000, HEADING);
+    private static final Pose SHOOT       = new Pose( 86.500, 10.000, HEADING);
+    private static final Pose FINAL       = new Pose( 96.500, 15.000, HEADING);
+    private static final Pose GOAL        = new Pose(11.000, 135.000, 0);
 
     // ── Shooter constants (tune from FTC Dashboard) ────────────────────────────
-    public static double SHOOT_RPM            = 5000.0;
-    public static double SHOOT_HOOD_POS       = 0;
-    public static long   SHOOT_FIRE_MS        = 1500;
-    public static double SHOOT_RPM_TOLERANCE  = 400.0;
-    /** Safety-net wait after arriving — shooter is already at speed so this rarely triggers. */
-    public static long   SHOOT_SPINUP_TIMEOUT_MS = 500;
-    /** Max time to wait for the turret to lock on the aim offset before firing anyway. */
+    public static double SHOOT_RPM                   = 5000.0;
+    public static double SHOOT_HOOD_POS              = 0;
+    public static long   SHOOT_FIRE_MS               = 1500;
+    public static double SHOOT_RPM_TOLERANCE         = 400.0;
+    public static long   SHOOT_SPINUP_TIMEOUT_MS     = 500;
     public static long   SHOOT_TURRET_LOCK_TIMEOUT_MS = 1000;
 
     // ── Intake ─────────────────────────────────────────────────────────────────
-    public static double INTAKE_POWER = 1.0;
-    /** Intake power on the return leg from BALL2 to the shoot position. */
+    public static double INTAKE_POWER              = 1.0;
     public static double BALL2_RETURN_INTAKE_POWER = 1.0;
 
     // ── Ball 2 repeat count ────────────────────────────────────────────────────
-    // Number of times to run the ball-2 pickup + shoot cycle. Set to 0 to skip entirely.
     public static int BALL2_LOOPS = 2;
 
     // ── Ball 2 shoot drift ─────────────────────────────────────────────────────
-    // Robot drifts at full strafe power for this many milliseconds before firing.
-    // Set to 0 to disable. Flip BALL2_DRIFT_POWER sign to reverse direction.
     public static long   BALL2_DRIFT_MS    = 600;
-    public static double BALL2_DRIFT_POWER = 1.0; // -1 = left in robot frame at heading 180°
+    public static double BALL2_DRIFT_POWER = -1.0;
 
     // ── Heading correction during shooting ────────────────────────────────────
-    // P gain applied to heading error (radians) to produce a turn power [-1..1].
-    // Raise if the robot drifts noticeably; lower if it oscillates.
     public static double HEADING_CORRECTION_P = 1.5;
 
     // ── Ball 2 dwell at pickup point ──────────────────────────────────────────
@@ -84,27 +70,24 @@ public class AutoBlueFar extends LinearOpMode {
     private HoodSubsystem    hood;
     private IntakeSubsystem  intake;
 
-    private FsmState state          = FsmState.PATHING;
-    private int      step           = 0;
-    private long     stateEnteredMs = 0;
+    private FsmState state           = FsmState.PATHING;
+    private int      step            = 0;
+    private long     stateEnteredMs  = 0;
     private int      ball2Done       = 0;
-    private boolean  ball2NeedsWait   = false; // arrived at BALL2, waiting before returning
-    private boolean  ball2NeedsReturn = false; // wait done, follow return path
-    private boolean  ball2NeedsShoot  = false; // return path done, time to shoot
+    private boolean  ball2NeedsWait   = false;
+    private boolean  ball2NeedsReturn = false;
+    private boolean  ball2NeedsShoot  = false;
     private boolean  finalPath        = false;
     private boolean  polynomialActive = false;
 
-    // WAIT / INTAKE_WAIT sub-state
     private long    waitStartMs     = 0;
     private long    intakeWaitStart = 0;
 
-    // SHOOTING sub-state
     private boolean shooterFired    = false;
     private long    fireStartMs     = 0;
-    private boolean driftInProgress = false; // true while the timed drift strafe is active
+    private boolean driftInProgress = false;
     private long    driftStartMs    = 0;
 
-    // Turret tracking — enabled only during SHOOTING and on the return leg of each ball path.
     private boolean turretTrackingEnabled = false;
 
     @Override
@@ -115,11 +98,13 @@ public class AutoBlueFar extends LinearOpMode {
         hood     = new HoodSubsystem(hardwareMap);
         intake   = new IntakeSubsystem(hardwareMap);
 
+        ShooterConfig.TRACKED_TAG_ID = 24; // Red alliance hub tag
+
         runner.setStartPose(START_SHOOT);
         hood.setPosition(SHOOT_HOOD_POS);
         shooter.switchPipeline(ShooterConfig.APRILTAG_PIPELINE);
 
-        telemetry.addLine("Auto Blue Far — waiting for start");
+        telemetry.addLine("Auto Red Far — waiting for start");
         telemetry.addData("SHOOT_RPM",      SHOOT_RPM);
         telemetry.addData("SHOOT_HOOD_POS", SHOOT_HOOD_POS);
         telemetry.update();
@@ -127,7 +112,6 @@ public class AutoBlueFar extends LinearOpMode {
         waitForStart();
         if (isStopRequested()) return;
 
-        // Start flywheel immediately — robot is already at the shoot position.
         shooter.setShooterVelocityRpm(SHOOT_RPM);
         enterStep();
 
@@ -145,7 +129,6 @@ public class AutoBlueFar extends LinearOpMode {
                 case DONE:                           break;
             }
 
-            // Polynomial RPM + hood — active from step 2 onward; first shot uses hardcoded SHOOT_RPM.
             if (polynomialActive && ShooterConfig.USE_DISTANCE_COMPENSATION) {
                 double dist = shooter.getTrackedTagDistanceCm();
                 if (dist > 0) {
@@ -154,7 +137,7 @@ public class AutoBlueFar extends LinearOpMode {
                     shooter.setAutoShootRpmOverride(ShooterConfig.hoodTuneAngle(d));
                     hood.setPosition(ShooterConfig.hoodPitch(d));
                 } else {
-                    shooter.clearAutoShootRpmOverride(); // fallback to SHOOT_RPM set in enterShooting/enterPathing
+                    shooter.clearAutoShootRpmOverride();
                 }
             } else {
                 shooter.clearAutoShootRpmOverride();
@@ -185,10 +168,10 @@ public class AutoBlueFar extends LinearOpMode {
     private void enterStep() {
         stateEnteredMs = System.currentTimeMillis();
         switch (step) {
-            case 0: enterWait();                      break;
-            case 1: enterShooting(false, false);                   break; // first shot: hardcoded RPM, no auto-aim
-            case 2: polynomialActive = true; enterPathing(chainBall1(), true); break;
-            case 3: enterShooting(true,  true);       break;
+            case 0: enterWait();                                                    break;
+            case 1: enterShooting(false, false);                                    break;
+            case 2: polynomialActive = true; enterPathing(chainBall1(), true);      break;
+            case 3: enterShooting(true, true);                                      break;
             default:
                 if (ball2NeedsShoot) {
                     ball2NeedsShoot = false;
@@ -249,7 +232,7 @@ public class AutoBlueFar extends LinearOpMode {
 
     private void enterPathing(PathChain chain, boolean runIntake) {
         state                 = FsmState.PATHING;
-        turretTrackingEnabled = false; // re-enabled in tickPathing when the return leg starts
+        turretTrackingEnabled = false;
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
         intake.setPower(runIntake ? INTAKE_POWER : 0);
         hood.setPosition(SHOOT_HOOD_POS);
@@ -258,7 +241,6 @@ public class AutoBlueFar extends LinearOpMode {
     }
 
     private void tickPathing() {
-        // Switch to full intake power on the ball2 return leg (no turret tracking until SHOOTING).
         if (step >= 4 && follower.getChainIndex() >= 1) {
             intake.setPower(BALL2_RETURN_INTAKE_POWER);
         }
@@ -279,7 +261,7 @@ public class AutoBlueFar extends LinearOpMode {
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
         shooter.setShooterVelocityRpm(SHOOT_RPM);
         hood.setPosition(SHOOT_HOOD_POS);
-        follower.startTeleOpDrive(); // keep heading correction active throughout shooting
+        follower.startTeleOpDrive();
         driftInProgress = false;
         driftStartMs    = 0;
         if (driftLeft && BALL2_DRIFT_MS > 0) {
@@ -290,8 +272,7 @@ public class AutoBlueFar extends LinearOpMode {
 
     private void tickShooting() {
         long elapsed = System.currentTimeMillis() - stateEnteredMs;
-        // Heading correction: proportional turn to restore HEADING (180°).
-        // Runs during drift AND while stationary — combined into one setTeleOpDrive call.
+
         double headingError = HEADING - follower.getPose().getHeading();
         while (headingError >  Math.PI) headingError -= 2 * Math.PI;
         while (headingError < -Math.PI) headingError += 2 * Math.PI;
@@ -306,12 +287,11 @@ public class AutoBlueFar extends LinearOpMode {
             }
         }
         follower.setTeleOpDrive(0, strafe, turnCorrection, true);
+
         if (!shooterFired) {
-            double targetRpm = shooter.getEffectiveTargetRpm();
+            double targetRpm     = shooter.getEffectiveTargetRpm();
             boolean atSpeed      = Math.abs(shooter.getShooterVelocityRpm() - targetRpm) < SHOOT_RPM_TOLERANCE;
             boolean timedOut     = elapsed > SHOOT_SPINUP_TIMEOUT_MS;
-            // Only fire once the turret has settled at the aim offset — prevents firing while the
-            // PID is still hunting, which causes the turret to oscillate side-to-side mid-shot.
             boolean hasTag       = shooter.getTrackedTagTx() != null;
             boolean turretReady  = hasTag && (shooter.isTurretLocked() || elapsed > SHOOT_TURRET_LOCK_TIMEOUT_MS);
             if ((atSpeed || timedOut) && turretReady && !driftInProgress) {
@@ -329,7 +309,6 @@ public class AutoBlueFar extends LinearOpMode {
 
     // ── Path chains ────────────────────────────────────────────────────────────
 
-    /** (68,6) → (39,35) → (8,35) → (68,6) */
     private PathChain chainBall1() {
         return follower.pathBuilder()
                 .addPath(new BezierLine(START_SHOOT, BALL1_MID))
@@ -341,7 +320,6 @@ public class AutoBlueFar extends LinearOpMode {
                 .build();
     }
 
-    /** current pose → BALL2 (starts from wherever the robot is after any drift) */
     private PathChain chainBall2Out() {
         Pose cur = follower.getPose();
         return follower.pathBuilder()
@@ -350,7 +328,6 @@ public class AutoBlueFar extends LinearOpMode {
                 .build();
     }
 
-    /** BALL2 → SHOOT */
     private PathChain chainBall2Return() {
         return follower.pathBuilder()
                 .addPath(new BezierLine(BALL2, SHOOT))
