@@ -15,14 +15,12 @@ import org.firstinspires.ftc.teamcode.teleop.subsystems.IntakeSubsystem;
 import org.firstinspires.ftc.teamcode.teleop.subsystems.ShooterSubsystem;
 
 /**
- * Red-alliance far-side autonomous routine — mirror of AutoBlueFar.
- *
- * Mirror rule: X_red = 141.5 - X_blue, Y unchanged, heading = π - θ_blue (180°→0°).
- * Tracks AprilTag ID 24 (Red alliance hub).
+ * Red-alliance far-side autonomous — geometry-only turret aiming (no Limelight).
+ * Turret angle and distance compensation derived entirely from Pedro odometry pose.
  */
 @Config
-@Autonomous(name = "Auto Red Far", group = "Competition")
-public class AutoRedFar extends LinearOpMode {
+@Autonomous(name = "Auto Red Far Geo", group = "Competition")
+public class AutoRedFarGeo extends LinearOpMode {
 
     // ── Field poses (heading 0°: robot faces +X) ──────────────────────────────
     private static final double HEADING   = Math.toRadians(0);
@@ -34,11 +32,11 @@ public class AutoRedFar extends LinearOpMode {
     private static final Pose GOAL        = new Pose(11.000, 135.000, 0);
 
     // ── Shooter constants (tune from FTC Dashboard) ────────────────────────────
-    public static double SHOOT_RPM                   = 4800.0;
-    public static double SHOOT_HOOD_POS              = 0.24;
+    public static double SHOOT_RPM                   = 5000.0;
+    public static double SHOOT_HOOD_POS              = 0.12;
     public static long   SHOOT_FIRE_MS               = 1500;
     public static double SHOOT_RPM_TOLERANCE         = 400.0;
-    public static long   SHOOT_SPINUP_TIMEOUT_MS     = 3500;
+    public static long   SHOOT_SPINUP_TIMEOUT_MS     = 500;
     public static long   SHOOT_TURRET_LOCK_TIMEOUT_MS = 1000;
 
     // ── Intake ─────────────────────────────────────────────────────────────────
@@ -58,17 +56,16 @@ public class AutoRedFar extends LinearOpMode {
     public static double HEADING_KD = 0.05;
 
     // ── Ball 2 timed drive ─────────────────────────────────────────────────────
-    private static final long   BALL2_OUT_MS     = 1300;  // time driving toward ball 2
-    private static final long   BALL2_RETURN_MS  = 900;  // time driving back to shoot pos
-    private static final double BALL2_OUT_FWD    = 0.8;   // forward power (robot frame) toward ball 2
-    private static final double BALL2_OUT_STRAFE = 0.0;   // strafe power (robot frame) toward ball 2
+    private static final long   BALL2_OUT_MS     = 1300;
+    private static final long   BALL2_RETURN_MS  = 900;
+    private static final double BALL2_OUT_FWD    = 0.8;
+    private static final double BALL2_OUT_STRAFE = 0.0;
 
     // ── Ball 2 dwell at pickup point ──────────────────────────────────────────
     public static long BALL2_WAIT_MS = 500;
 
     // ── Start delay ────────────────────────────────────────────────────────────
-    public static long   START_DELAY_MS       = 1500;
-    public static double TURRET_AIM_OFFSET_DEG = 6.0;
+    public static long START_DELAY_MS = 1500;
 
     // ── State machine ──────────────────────────────────────────────────────────
     private enum FsmState { WAIT, PATHING, INTAKE_WAIT, TIMED_DRIVE, SHOOTING, DONE }
@@ -116,12 +113,10 @@ public class AutoRedFar extends LinearOpMode {
 
         headingPid = new PIDController(HEADING_KP, HEADING_KI, HEADING_KD);
 
-        ShooterConfig.TRACKED_TAG_ID = 24; // Red alliance hub tag
         runner.setStartPose(START_SHOOT);
         hood.setPosition(SHOOT_HOOD_POS);
-        shooter.switchPipeline(ShooterConfig.APRILTAG_PIPELINE);
 
-        telemetry.addLine("Auto Red Far — waiting for start");
+        telemetry.addLine("Auto Red Far Geo — waiting for start");
         telemetry.addData("SHOOT_RPM",      SHOOT_RPM);
         telemetry.addData("SHOOT_HOOD_POS", SHOOT_HOOD_POS);
         telemetry.update();
@@ -134,7 +129,6 @@ public class AutoRedFar extends LinearOpMode {
 
         while (opModeIsActive() && !isStopRequested()) {
             Pose currentPose = follower.getPose();
-            shooter.cacheLimelightResult();
             shooter.setRobotPose(currentPose.getX(), currentPose.getY(),
                     Math.toDegrees(currentPose.getHeading()));
 
@@ -148,7 +142,7 @@ public class AutoRedFar extends LinearOpMode {
             }
 
             if (polynomialActive && ShooterConfig.USE_DISTANCE_COMPENSATION) {
-                double dist = shooter.getTrackedTagDistanceCm();
+                double dist = goalDistanceCm();
                 if (dist > 0) {
                     double d = Math.max(ShooterConfig.MIN_COMP_DISTANCE,
                                         Math.min(dist, ShooterConfig.MAX_COMP_DISTANCE));
@@ -162,13 +156,8 @@ public class AutoRedFar extends LinearOpMode {
             }
 
             follower.update();
-            shooter.setAimOffsetDeg(TURRET_AIM_OFFSET_DEG);
             if (turretTrackingEnabled) {
-                if (shooter.getTrackedTagTx() != null) {
-                    shooter.runTurretControl(0, false);
-                } else {
-                    shooter.holdTurretAtAngle(computeGoalTurretAngleDeg(GOAL));
-                }
+                shooter.holdTurretAtAngle(computeGoalTurretAngleDeg(GOAL));
             } else {
                 shooter.setTurretPower(0);
             }
@@ -187,10 +176,10 @@ public class AutoRedFar extends LinearOpMode {
     private void enterStep() {
         stateEnteredMs = System.currentTimeMillis();
         switch (step) {
-            case 0: enterWait();                                                    break;
-            case 1: enterShooting(false, true);                                      break;
-            case 2: polynomialActive = true; enterPathing(chainBall1(), true);      break;
-            case 3: enterShooting(true, true);                                      break;
+            case 0: enterWait();                                               break;
+            case 1: enterShooting(false, true);                                break;
+            case 2: polynomialActive = true; enterPathing(chainBall1(), true); break;
+            case 3: enterShooting(true, true);                                 break;
             default:
                 if (ball2NeedsShoot) {
                     ball2NeedsShoot = false;
@@ -334,12 +323,11 @@ public class AutoRedFar extends LinearOpMode {
         follower.setTeleOpDrive(0, strafe, turnCorrection, true);
 
         if (!shooterFired) {
-            double targetRpm     = shooter.getEffectiveTargetRpm();
-            boolean atSpeed      = Math.abs(shooter.getShooterVelocityRpm() - targetRpm) < SHOOT_RPM_TOLERANCE;
-            boolean timedOut     = elapsed > SHOOT_SPINUP_TIMEOUT_MS;
-            boolean hasTag       = shooter.getTrackedTagTx() != null;
-            boolean turretReady  = !hasTag || shooter.isTurretLocked() || elapsed > SHOOT_TURRET_LOCK_TIMEOUT_MS;
-            if (timedOut || (atSpeed && turretReady && !driftInProgress)) {
+            double targetRpm    = shooter.getEffectiveTargetRpm();
+            boolean atSpeed     = Math.abs(shooter.getShooterVelocityRpm() - targetRpm) < SHOOT_RPM_TOLERANCE;
+            boolean timedOut    = elapsed > SHOOT_SPINUP_TIMEOUT_MS;
+            boolean turretReady = shooter.isTurretLocked() || elapsed > SHOOT_TURRET_LOCK_TIMEOUT_MS;
+            if ((atSpeed || timedOut) && turretReady && !driftInProgress) {
                 shooter.setStopperPosition(ShooterConfig.STOPPER_OPEN);
                 intake.setPower(INTAKE_POWER);
                 shooterFired = true;
@@ -382,6 +370,13 @@ public class AutoRedFar extends LinearOpMode {
         return normalizeDeg(goalHeadingDeg - robotHeadingDeg);
     }
 
+    private double goalDistanceCm() {
+        Pose cur = follower.getPose();
+        double dx = GOAL.getX() - cur.getX();
+        double dy = GOAL.getY() - cur.getY();
+        return Math.sqrt(dx * dx + dy * dy) * 2.54;
+    }
+
     private static double normalizeDeg(double deg) {
         while (deg >  180.0) deg -= 360.0;
         while (deg <= -180.0) deg += 360.0;
@@ -401,24 +396,17 @@ public class AutoRedFar extends LinearOpMode {
 
     private void renderTelemetry() {
         Pose p = follower.getPose();
-        telemetry.addData("State",   "%s (step %d)", state, step);
-        telemetry.addData("Pose",    "(%.1f, %.1f) %.0f°",
+        telemetry.addData("State",  "%s (step %d)", state, step);
+        telemetry.addData("Pose",   "(%.1f, %.1f) %.0f°",
                 p.getX(), p.getY(), Math.toDegrees(p.getHeading()));
-        Double tgtTx = shooter.getTrackedTagTx();
-        Double rawTx = shooter.getRawTagTx();
-        double estTx = shooter.getEstimatedTx();
-        Double fallbackGoal = tgtTx == null ? computeGoalTurretAngleDeg(GOAL) : null;
-        telemetry.addData("Turret",  "%.1f deg  tgtTx=%s rawTx=%s  estTx=%s  dist %.0f cm",
+        telemetry.addData("Turret", "%.1f deg  goal=%.1f°  dist=%.0f cm  locked=%b",
                 shooter.getTurretAngleDeg(),
-                tgtTx != null ? String.format("%.1f°", tgtTx) : "no tag",
-                rawTx != null ? String.format("%.1f°", rawTx) : "-",
-                Double.isNaN(estTx) ? "?" : String.format("%.1f°", estTx),
-                shooter.getTrackedTagDistanceCm());
-        telemetry.addData("GoalAim", tgtTx != null ? "tag" : String.format("%.1f°", fallbackGoal));
-        telemetry.addData("LL",      shooter.getLimelightDebugInfo());
-        telemetry.addData("Hood",    "%.3f", hood.getPosition());
-        telemetry.addData("RPM",     "%.0f / %.0f  fired=%b  turretLocked=%b",
-                shooter.getShooterVelocityRpm(), SHOOT_RPM, shooterFired, shooter.isTurretLocked());
+                computeGoalTurretAngleDeg(GOAL),
+                goalDistanceCm(),
+                shooter.isTurretLocked());
+        telemetry.addData("Hood",   "%.3f", hood.getPosition());
+        telemetry.addData("RPM",    "%.0f / %.0f  fired=%b",
+                shooter.getShooterVelocityRpm(), SHOOT_RPM, shooterFired);
         if (state == FsmState.PATHING) {
             telemetry.addData("PathIdx", "%d", follower.getChainIndex());
         }

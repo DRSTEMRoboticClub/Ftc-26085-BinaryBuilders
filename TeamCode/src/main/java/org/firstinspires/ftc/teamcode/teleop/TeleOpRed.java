@@ -267,6 +267,8 @@ public class TeleOpRed extends CommandOpMode {
         telemetry.addLine("LLdbg " + shooter.getLimelightDebugInfo());
         telemetry.addLine("LLpipe " + shooter.getPipelineUploadStatus());
 
+        telemetry.addLine(String.format("RPM  NEAR %.0f (↑↓)  FAR %.0f (←→)",
+                ShooterConfig.NEAR_RPM, ShooterConfig.FAR_RPM));
         // Manual tuning readout (G2 D-pad L/R = power, U/D = hood).
         telemetry.addLine(String.format("MANUAL  power(RPM) %.0f -> act %.0f  |  hood %.3f",
                 ShooterConfig.MANUAL_TARGET_RPM, shooter.getShooterVelocityRpm(),

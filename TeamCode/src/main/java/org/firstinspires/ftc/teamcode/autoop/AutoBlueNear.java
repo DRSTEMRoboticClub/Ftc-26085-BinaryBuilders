@@ -34,24 +34,25 @@ public class AutoBlueNear extends LinearOpMode {
     private static final Pose START        = new Pose(21.000, 119.000, HEADING);
     private static final Pose SHOOT_START  = new Pose(53.000,  88.000, HEADING);
     private static final Pose BALL1_SWEEP  = new Pose(39.000,  77.000, HEADING);
-    private static final Pose BALL1        = new Pose( 11.000,  77.000, HEADING);
-    private static final Pose BALL2_SWEEP  = new Pose(39.000,  44.000, HEADING);
-    private static final Pose BALL2        = new Pose( 8.000,  44.000, HEADING);
+    private static final Pose BALL1        = new Pose( 13.000,  77.000, HEADING);
+    private static final Pose BALL2_SWEEP  = new Pose(39.000,  46.000, HEADING);
+    private static final Pose BALL2        = new Pose( 10.000,  46.000, HEADING);
     private static final Pose FINAL        = new Pose( 10.00,  88.000, HEADING);
-    private static final Pose SHOOT        = new Pose(50.000,  83.000, HEADING);
-    private static final Pose RELEASE      = new Pose(11.500,  61.500, 165);
+    private static final Pose SHOOT        = new Pose(48.000,  83.000, HEADING);
+    private static final Pose RELEASE      = new Pose(10.00,  61.500, 165);
 
     // Number of SHOOT → RELEASE → INTAKE_WAIT → RELEASE → SHOOT cycles to run.
     // Set to 0 to skip all release cycles and go straight to park after ball 2.
     public static int RELEASE_LOOPS = 0;
 
     // ── Shooter constants (tune from FTC Dashboard) ────────────────────────────
-    public static double SHOOT_RPM            = 4100.0;
-    public static double SHOOT_HOOD_POS       = 0.12;
-    public static long   SHOOT_FIRE_MS        = 1500;
+    public static double SHOOT_RPM            = 4000.0;
+    public static double SHOOT_HOOD_POS       = 0.30;
+    public static long   SHOOT_FIRE_MS        = 1000;
     public static double SHOOT_RPM_TOLERANCE  = 400.0;
     /** Safety-net wait after arriving — shooter is already at speed so this rarely triggers. */
-    public static long   SHOOT_SPINUP_TIMEOUT_MS = 0;
+    public static long   SHOOT_SPINUP_TIMEOUT_MS      = 0;
+    public static long   SHOOT_TURRET_LOCK_TIMEOUT_MS = 1000;
 
     // ── Intake ─────────────────────────────────────────────────────────────────
     public static double INTAKE_POWER     = 1.0;
@@ -71,6 +72,8 @@ public class AutoBlueNear extends LinearOpMode {
     private long     stateEnteredMs = 0;
     private boolean  finalPath      = false;
 
+    private boolean turretTrackingEnabled = false;
+
     // SHOOTING sub-state
     private boolean shooterFired    = false;
     private long    fireStartMs     = 0;
@@ -86,8 +89,10 @@ public class AutoBlueNear extends LinearOpMode {
         hood     = new HoodSubsystem(hardwareMap);
         intake   = new IntakeSubsystem(hardwareMap);
 
+        ShooterConfig.TRACKED_TAG_ID = 20; // Blue alliance hub tag
         runner.setStartPose(START);
         hood.setPosition(SHOOT_HOOD_POS);
+        shooter.switchPipeline(ShooterConfig.APRILTAG_PIPELINE);
 
         telemetry.addLine("Auto Blue Near — waiting for start");
         telemetry.addData("SHOOT_RPM",      SHOOT_RPM);
@@ -102,6 +107,11 @@ public class AutoBlueNear extends LinearOpMode {
         enterStep();
 
         while (opModeIsActive() && !isStopRequested()) {
+            Pose currentPose = follower.getPose();
+            shooter.cacheLimelightResult();
+            shooter.setRobotPose(currentPose.getX(), currentPose.getY(),
+                    Math.toDegrees(currentPose.getHeading()));
+
             switch (state) {
                 case PATHING:     tickPathing();     break;
                 case SHOOTING:    tickShooting();    break;
@@ -110,7 +120,11 @@ public class AutoBlueNear extends LinearOpMode {
             }
 
             follower.update();
-            shooter.setTurretPower(0);
+            if (turretTrackingEnabled) {
+                shooter.runTurretControl(0, false);
+            } else {
+                shooter.setTurretPower(0);
+            }
             shooter.updatePID();
             renderTelemetry();
             telemetry.update();
@@ -118,6 +132,7 @@ public class AutoBlueNear extends LinearOpMode {
 
         intake.setPower(0);
         shooter.setShooterVelocityRpm(0);
+        shooter.stopLimelight();
     }
 
     // ── Step sequencer ─────────────────────────────────────────────────────────
@@ -158,6 +173,7 @@ public class AutoBlueNear extends LinearOpMode {
 
     private void enterPathing(PathChain chain, boolean runIntake) {
         state = FsmState.PATHING;
+        turretTrackingEnabled = false;
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
         intake.setPower(runIntake ? INTAKE_POWER : 0);
         hood.setPosition(SHOOT_HOOD_POS);
@@ -177,6 +193,7 @@ public class AutoBlueNear extends LinearOpMode {
 
     private void enterShooting() {
         state        = FsmState.SHOOTING;
+        turretTrackingEnabled = true;
         shooterFired = false;
         fireStartMs  = 0;
         intake.setPower(0);
@@ -207,6 +224,7 @@ public class AutoBlueNear extends LinearOpMode {
 
     private void enterIntakeWait() {
         state           = FsmState.INTAKE_WAIT;
+        turretTrackingEnabled = false;
         intakeWaitStart = System.currentTimeMillis();
         intake.setPower(INTAKE_POWER);
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
@@ -250,7 +268,11 @@ public class AutoBlueNear extends LinearOpMode {
                 .setConstantHeadingInterpolation(HEADING)
                 .addPath(new BezierLine(BALL2_SWEEP, BALL2))
                 .setConstantHeadingInterpolation(HEADING)
-                .addPath(new BezierLine(BALL2, SHOOT))
+                .addPath(new BezierLine(BALL2, BALL2_SWEEP))
+                .setConstantHeadingInterpolation(HEADING)
+                .addPath(new BezierLine(BALL2_SWEEP, RELEASE))
+                .setConstantHeadingInterpolation(HEADING)
+                .addPath(new BezierLine(RELEASE, SHOOT))
                 .setConstantHeadingInterpolation(HEADING)
                 .build();
     }

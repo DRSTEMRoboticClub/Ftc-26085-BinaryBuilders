@@ -79,8 +79,8 @@ public class ShooterConfig {
     // NOTE: TARGET_ABOVE_CM shifts the true vertical aim angle but the hoodPitch/hoodTuneAngle
     // polynomials were calibrated at TAG_CENTER_HEIGHT_CM. If the target height changes
     // significantly, re-calibrate those polynomials at the new target height.
-    public static double TARGET_BEHIND_CM = 25;  // cm behind the tag face (into the goal)
-    public static double TARGET_ABOVE_CM  = 25.0;  // cm above the tag centre (upward)
+    public static double TARGET_BEHIND_CM = 0;  // cm behind the tag face (into the goal)
+    public static double TARGET_ABOVE_CM  = 15.0;  // cm above the tag centre (upward)
 
     public static double STOPPER_CLOSED = 0.0;
     public static double STOPPER_OPEN = 1.0;
@@ -118,8 +118,10 @@ public class ShooterConfig {
     public static double SHOOTER_ENCODER_EVENTS_PER_REV = 28;
 
     // Manual shooter RPM targets (G2 left/right bumper). Tunable via G2 D-pad.
-    public static double NEAR_RPM = 3900.0;  // close shot (~115 cm)
-    public static double FAR_RPM  = 4800.0;  // far shot  (~200 cm)
+    public static double NEAR_RPM = 3400.0;  // close shot (~115 cm)
+    public static double NEAR_PITCH = 0.7;
+    public static double FAR_RPM  = 5000.0;  // far shot  (~200 cm)
+    public static double FAR_PITCH = 0;
 
     // Legacy single-target RPM kept for backward compat with any auto modes that still use it.
     public static double MANUAL_TARGET_RPM = 3500.0;

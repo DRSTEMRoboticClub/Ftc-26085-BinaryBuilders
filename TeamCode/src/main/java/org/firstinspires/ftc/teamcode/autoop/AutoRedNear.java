@@ -28,19 +28,19 @@ public class AutoRedNear extends LinearOpMode {
     private static final Pose SHOOT_START  = new Pose( 88.500,  88.000, HEADING);
     private static final Pose BALL1_SWEEP  = new Pose(102.500,  77.000, HEADING);
     private static final Pose BALL1        = new Pose(115.500,  77.000, HEADING);
-    private static final Pose BALL2_SWEEP  = new Pose(98.500,  45.000, HEADING);
-    private static final Pose BALL2        = new Pose(125.500,  45.000, HEADING);
+    private static final Pose BALL2_SWEEP  = new Pose(93.500,  48.000, HEADING);
+    private static final Pose BALL2        = new Pose(127.000,  48.000, HEADING);
     private static final Pose FINAL        = new Pose(131.500,  88.000, HEADING);
     private static final Pose SHOOT        = new Pose( 91.500,  83.000, HEADING);
     // RELEASE heading mirrors 165° → 15° (π - 165° = 15°)
-    private static final Pose RELEASE      = new Pose(130.000,  61.500, Math.toRadians(15));
+    private static final Pose RELEASE      = new Pose(125.000,  62.500, HEADING);
 
     public static int RELEASE_LOOPS = 0;
 
     // ── Shooter constants (tune from FTC Dashboard) ────────────────────────────
-    public static double SHOOT_RPM            = 4100.0;
-    public static double SHOOT_HOOD_POS       = 0.12;
-    public static long   SHOOT_FIRE_MS        = 1500;
+    public static double SHOOT_RPM            = 3950.0;
+    public static double SHOOT_HOOD_POS       = 0.30;
+    public static long   SHOOT_FIRE_MS        = 1000;
     public static double SHOOT_RPM_TOLERANCE  = 400.0;
     public static long   SHOOT_SPINUP_TIMEOUT_MS      = 0;
     public static long   SHOOT_TURRET_LOCK_TIMEOUT_MS = 1000;
@@ -159,6 +159,7 @@ public class AutoRedNear extends LinearOpMode {
 
     private void enterPathing(PathChain chain, boolean runIntake) {
         state = FsmState.PATHING;
+        turretTrackingEnabled = false;
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
         intake.setPower(runIntake ? INTAKE_POWER : 0);
         hood.setPosition(SHOOT_HOOD_POS);
@@ -178,6 +179,7 @@ public class AutoRedNear extends LinearOpMode {
 
     private void enterShooting() {
         state        = FsmState.SHOOTING;
+        turretTrackingEnabled = true;
         shooterFired = false;
         fireStartMs  = 0;
         intake.setPower(0);
@@ -208,6 +210,7 @@ public class AutoRedNear extends LinearOpMode {
 
     private void enterIntakeWait() {
         state           = FsmState.INTAKE_WAIT;
+        turretTrackingEnabled = false;
         intakeWaitStart = System.currentTimeMillis();
         intake.setPower(INTAKE_POWER);
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);

@@ -1,6 +1,7 @@
 package org.firstinspires.ftc.teamcode.autoop;
 
 import com.acmerobotics.dashboard.config.Config;
+import com.arcrobotics.ftclib.controller.PIDController;
 import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.BezierLine;
 import com.pedropathing.geometry.Pose;
@@ -32,20 +33,19 @@ public class AutoBlueFar extends LinearOpMode {
     // ── Field poses (heading 180°) ────────────────────, reversed]─────────────────────────
     private static final double HEADING      = Math.toRadians(180);
     private static final Pose START_SHOOT    = new Pose(47.000,  10.000, HEADING);
-    private static final Pose BALL1_MID      = new Pose(46.500, 34.000, HEADING);
-    private static final Pose BALL1          = new Pose(15.000, 34.000, HEADING);
-    private static final Pose BALL2          = new Pose(10.000,  6.000, HEADING);
+    private static final Pose BALL1_MID      = new Pose(46.500, 33.000, HEADING);
+    private static final Pose BALL1          = new Pose(15.000, 33.000, HEADING);
     private static final Pose SHOOT          = new Pose(55.000, 10.000, HEADING);
     private static final Pose FINAL          = new Pose(45.000, 15.000, HEADING);
     private static final Pose GOAL           = new Pose(130.500, 135.000, 0);
 
     // ── Shooter constants (tune from FTC Dashboard) ────────────────────────────
     public static double SHOOT_RPM            = 5000.0;
-    public static double SHOOT_HOOD_POS       = 0;
+    public static double SHOOT_HOOD_POS       = 0.12;
     public static long   SHOOT_FIRE_MS        = 1500;
     public static double SHOOT_RPM_TOLERANCE  = 400.0;
     /** Safety-net wait after arriving — shooter is already at speed so this rarely triggers. */
-    public static long   SHOOT_SPINUP_TIMEOUT_MS = 500;
+    public static long   SHOOT_SPINUP_TIMEOUT_MS = 3500;
     /** Max time to wait for the turret to lock on the aim offset before firing anyway. */
     public static long   SHOOT_TURRET_LOCK_TIMEOUT_MS = 1000;
 
@@ -61,13 +61,20 @@ public class AutoBlueFar extends LinearOpMode {
     // ── Ball 2 shoot drift ─────────────────────────────────────────────────────
     // Robot drifts at full strafe power for this many milliseconds before firing.
     // Set to 0 to disable. Flip BALL2_DRIFT_POWER sign to reverse direction.
-    public static long   BALL2_DRIFT_MS    = 600;
-    public static double BALL2_DRIFT_POWER = 1.0; // -1 = left in robot frame at heading 180°
+    public static long   BALL2_DRIFT_MS    = 300;
+    public static double BALL2_DRIFT_POWER = -1.0; // -1 = left in robot frame at heading 180°
 
-    // ── Heading correction during shooting ────────────────────────────────────
-    // P gain applied to heading error (radians) to produce a turn power [-1..1].
-    // Raise if the robot drifts noticeably; lower if it oscillates.
-    public static double HEADING_CORRECTION_P = 1.5;
+    // ── Heading PID ───────────────────────────────────────────────────────────
+    public static double HEADING_KP            = 1.5;
+    public static double HEADING_KI            = 0.0;
+    public static double HEADING_KD            = 0.05;
+    public static double HEADING_TOLERANCE_DEG = 3.0;
+
+    // ── Ball 2 timed drive ─────────────────────────────────────────────────────
+    private static final long   BALL2_OUT_MS     = 1300;  // time driving toward ball 2
+    private static final long   BALL2_RETURN_MS  = 900;  // time driving back to shoot pos
+    private static final double BALL2_OUT_FWD    = 0.8;   // forward power (robot frame) toward ball 2
+    private static final double BALL2_OUT_STRAFE = 0.0;   // strafe power (robot frame) toward ball 2
 
     // ── Ball 2 dwell at pickup point ──────────────────────────────────────────
     public static long BALL2_WAIT_MS = 500;
@@ -76,7 +83,7 @@ public class AutoBlueFar extends LinearOpMode {
     public static long START_DELAY_MS = 1500;
 
     // ── State machine ──────────────────────────────────────────────────────────
-    private enum FsmState { WAIT, PATHING, INTAKE_WAIT, SHOOTING, DONE }
+    private enum FsmState { WAIT, PATHING, INTAKE_WAIT, TIMED_DRIVE, SHOOTING, DONE }
 
     private PedroAutoRunner  runner;
     private Follower         follower;
@@ -98,6 +105,11 @@ public class AutoBlueFar extends LinearOpMode {
     private long    waitStartMs     = 0;
     private long    intakeWaitStart = 0;
 
+    // TIMED_DRIVE sub-state
+    private long   timedDriveEndMs  = 0;
+    private double timedDriveFwd    = 0;
+    private double timedDriveStrafe = 0;
+
     // SHOOTING sub-state
     private boolean shooterFired    = false;
     private long    fireStartMs     = 0;
@@ -107,6 +119,8 @@ public class AutoBlueFar extends LinearOpMode {
     // Turret tracking — enabled only during SHOOTING and on the return leg of each ball path.
     private boolean turretTrackingEnabled = false;
 
+    private PIDController headingPid;
+
     @Override
     public void runOpMode() {
         runner   = new PedroAutoRunner(hardwareMap);
@@ -115,9 +129,10 @@ public class AutoBlueFar extends LinearOpMode {
         hood     = new HoodSubsystem(hardwareMap);
         intake   = new IntakeSubsystem(hardwareMap);
 
+        headingPid = new PIDController(HEADING_KP, HEADING_KI, HEADING_KD);
+
         runner.setStartPose(START_SHOOT);
         hood.setPosition(SHOOT_HOOD_POS);
-        shooter.switchPipeline(ShooterConfig.APRILTAG_PIPELINE);
 
         telemetry.addLine("Auto Blue Far — waiting for start");
         telemetry.addData("SHOOT_RPM",      SHOOT_RPM);
@@ -133,7 +148,6 @@ public class AutoBlueFar extends LinearOpMode {
 
         while (opModeIsActive() && !isStopRequested()) {
             Pose currentPose = follower.getPose();
-            shooter.cacheLimelightResult();
             shooter.setRobotPose(currentPose.getX(), currentPose.getY(),
                     Math.toDegrees(currentPose.getHeading()));
 
@@ -141,13 +155,16 @@ public class AutoBlueFar extends LinearOpMode {
                 case WAIT:        tickWait();        break;
                 case PATHING:     tickPathing();     break;
                 case INTAKE_WAIT: tickIntakeWait();  break;
+                case TIMED_DRIVE: tickTimedDrive();  break;
                 case SHOOTING:    tickShooting();    break;
                 case DONE:                           break;
             }
 
-            // Polynomial RPM + hood — active from step 2 onward; first shot uses hardcoded SHOOT_RPM.
-            if (polynomialActive && ShooterConfig.USE_DISTANCE_COMPENSATION) {
-                double dist = shooter.getTrackedTagDistanceCm();
+            // Polynomial RPM + hood — active during pathing from step 2 onward.
+            // Never applied during SHOOTING: the stopper fires at hardcoded SHOOT_RPM always.
+            if (polynomialActive && ShooterConfig.USE_DISTANCE_COMPENSATION
+                    && state != FsmState.SHOOTING) {
+                double dist = goalDistanceCm();
                 if (dist > 0) {
                     double d = Math.max(ShooterConfig.MIN_COMP_DISTANCE,
                                         Math.min(dist, ShooterConfig.MAX_COMP_DISTANCE));
@@ -162,11 +179,7 @@ public class AutoBlueFar extends LinearOpMode {
 
             follower.update();
             if (turretTrackingEnabled) {
-                if (shooter.getTrackedTagTx() != null) {
-                    shooter.runTurretControl(0, false);
-                } else {
-                    shooter.holdTurretAtAngle(computeGoalTurretAngleDeg(GOAL));
-                }
+                shooter.holdTurretAtAngle(computeGoalTurretAngleDeg(GOAL));
             } else {
                 shooter.setTurretPower(0);
             }
@@ -186,7 +199,7 @@ public class AutoBlueFar extends LinearOpMode {
         stateEnteredMs = System.currentTimeMillis();
         switch (step) {
             case 0: enterWait();                      break;
-            case 1: enterShooting(false, false);                   break; // first shot: hardcoded RPM, no auto-aim
+            case 1: enterShooting(false, false);                    break;
             case 2: polynomialActive = true; enterPathing(chainBall1(), true); break;
             case 3: enterShooting(true,  true);       break;
             default:
@@ -197,14 +210,14 @@ public class AutoBlueFar extends LinearOpMode {
                 } else if (ball2NeedsReturn) {
                     ball2NeedsReturn = false;
                     ball2NeedsShoot  = true;
-                    enterPathing(chainBall2Return(), true);
+                    enterTimedDrive(-BALL2_OUT_FWD, -BALL2_OUT_STRAFE, BALL2_RETURN_MS, true, false);
                 } else if (ball2NeedsWait) {
                     ball2NeedsWait   = false;
                     ball2NeedsReturn = true;
                     enterIntakeWait();
                 } else if (ball2Done < BALL2_LOOPS) {
                     ball2NeedsWait = true;
-                    enterPathing(chainBall2Out(), true);
+                    enterTimedDrive(BALL2_OUT_FWD, BALL2_OUT_STRAFE, BALL2_OUT_MS, true, false);
                 } else {
                     finalPath = true;
                     enterPathing(chainFinal(), false);
@@ -238,10 +251,13 @@ public class AutoBlueFar extends LinearOpMode {
         intake.setPower(INTAKE_POWER);
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
         shooter.setShooterVelocityRpm(SHOOT_RPM);
+        headingPid.reset();
+        follower.startTeleOpDrive();
     }
 
     private void tickIntakeWait() {
         shooter.setShooterVelocityRpm(SHOOT_RPM);
+        follower.setTeleOpDrive(0, 0, computeHeadingCorrection(), true);
         if (System.currentTimeMillis() - intakeWaitStart >= BALL2_WAIT_MS) advance();
     }
 
@@ -249,7 +265,7 @@ public class AutoBlueFar extends LinearOpMode {
 
     private void enterPathing(PathChain chain, boolean runIntake) {
         state                 = FsmState.PATHING;
-        turretTrackingEnabled = false; // re-enabled in tickPathing when the return leg starts
+        turretTrackingEnabled = false;
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
         intake.setPower(runIntake ? INTAKE_POWER : 0);
         hood.setPosition(SHOOT_HOOD_POS);
@@ -258,13 +274,38 @@ public class AutoBlueFar extends LinearOpMode {
     }
 
     private void tickPathing() {
-        // Switch to full intake power on the ball2 return leg (no turret tracking until SHOOTING).
-        if (step >= 4 && follower.getChainIndex() >= 1) {
-            intake.setPower(BALL2_RETURN_INTAKE_POWER);
+        // Enable tracking only on the return-to-shoot leg of the ball1 chain (BALL1→SHOOT, index 2).
+        if (step == 2 && follower.getChainIndex() >= 2) {
+            turretTrackingEnabled = true;
         }
         if (!runner.isBusy()) {
             if (finalPath) state = FsmState.DONE;
             else           advance();
+        }
+    }
+
+    // ── TIMED_DRIVE ────────────────────────────────────────────────────────────
+
+    private void enterTimedDrive(double fwd, double strafe, long durationMs, boolean runIntake, boolean tracking) {
+        state                 = FsmState.TIMED_DRIVE;
+        turretTrackingEnabled = tracking;
+        timedDriveFwd         = fwd;
+        timedDriveStrafe      = strafe;
+        timedDriveEndMs       = System.currentTimeMillis() + durationMs;
+        intake.setPower(runIntake ? INTAKE_POWER : 0);
+        shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
+        shooter.setShooterVelocityRpm(SHOOT_RPM);
+        headingPid.reset();
+        follower.startTeleOpDrive();
+    }
+
+    private void tickTimedDrive() {
+        long remaining = timedDriveEndMs - System.currentTimeMillis();
+        double scale = (timedDriveFwd > 0 && remaining < 150) ? 0.6 : 1.0;
+        follower.setTeleOpDrive(timedDriveFwd * scale, timedDriveStrafe * scale, computeHeadingCorrection(), true);
+        if (remaining <= 0) {
+            follower.setTeleOpDrive(0, 0, 0, true);
+            advance();
         }
     }
 
@@ -279,7 +320,8 @@ public class AutoBlueFar extends LinearOpMode {
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
         shooter.setShooterVelocityRpm(SHOOT_RPM);
         hood.setPosition(SHOOT_HOOD_POS);
-        follower.startTeleOpDrive(); // keep heading correction active throughout shooting
+        follower.startTeleOpDrive();
+        headingPid.reset();
         driftInProgress = false;
         driftStartMs    = 0;
         if (driftLeft && BALL2_DRIFT_MS > 0) {
@@ -290,12 +332,10 @@ public class AutoBlueFar extends LinearOpMode {
 
     private void tickShooting() {
         long elapsed = System.currentTimeMillis() - stateEnteredMs;
-        // Heading correction: proportional turn to restore HEADING (180°).
-        // Runs during drift AND while stationary — combined into one setTeleOpDrive call.
         double headingError = HEADING - follower.getPose().getHeading();
         while (headingError >  Math.PI) headingError -= 2 * Math.PI;
         while (headingError < -Math.PI) headingError += 2 * Math.PI;
-        double turnCorrection = Math.max(-0.5, Math.min(0.5, headingError * HEADING_CORRECTION_P));
+        double turnCorrection = computeHeadingCorrection();
 
         double strafe = 0;
         if (driftInProgress) {
@@ -312,9 +352,12 @@ public class AutoBlueFar extends LinearOpMode {
             boolean timedOut     = elapsed > SHOOT_SPINUP_TIMEOUT_MS;
             // Only fire once the turret has settled at the aim offset — prevents firing while the
             // PID is still hunting, which causes the turret to oscillate side-to-side mid-shot.
-            boolean hasTag       = shooter.getTrackedTagTx() != null;
-            boolean turretReady  = hasTag && (shooter.isTurretLocked() || elapsed > SHOOT_TURRET_LOCK_TIMEOUT_MS);
-            if ((atSpeed || timedOut) && turretReady && !driftInProgress) {
+            boolean turretReady  = shooter.isTurretLocked() || elapsed > SHOOT_TURRET_LOCK_TIMEOUT_MS;
+            // Gate on heading settled — prevents firing while the chassis is still spinning from
+            // drift. Falls back to firing after SHOOT_TURRET_LOCK_TIMEOUT_MS regardless.
+            boolean headingOk    = Math.abs(headingError) < Math.toRadians(HEADING_TOLERANCE_DEG)
+                    || elapsed > SHOOT_TURRET_LOCK_TIMEOUT_MS;
+            if (timedOut || (atSpeed && turretReady && headingOk && !driftInProgress)) {
                 shooter.setStopperPosition(ShooterConfig.STOPPER_OPEN);
                 intake.setPower(INTAKE_POWER);
                 shooterFired = true;
@@ -341,23 +384,6 @@ public class AutoBlueFar extends LinearOpMode {
                 .build();
     }
 
-    /** current pose → BALL2 (starts from wherever the robot is after any drift) */
-    private PathChain chainBall2Out() {
-        Pose cur = follower.getPose();
-        return follower.pathBuilder()
-                .addPath(new BezierLine(cur, BALL2))
-                .setConstantHeadingInterpolation(HEADING)
-                .build();
-    }
-
-    /** BALL2 → SHOOT */
-    private PathChain chainBall2Return() {
-        return follower.pathBuilder()
-                .addPath(new BezierLine(BALL2, SHOOT))
-                .setConstantHeadingInterpolation(HEADING)
-                .build();
-    }
-
     private PathChain chainFinal() {
         Pose cur = follower.getPose();
         return follower.pathBuilder()
@@ -375,34 +401,48 @@ public class AutoBlueFar extends LinearOpMode {
         return normalizeDeg(goalHeadingDeg - robotHeadingDeg);
     }
 
+    private double goalDistanceCm() {
+        Pose cur = follower.getPose();
+        double dx = GOAL.getX() - cur.getX();
+        double dy = GOAL.getY() - cur.getY();
+        return Math.sqrt(dx * dx + dy * dy) * 2.54;
+    }
+
     private static double normalizeDeg(double deg) {
         while (deg >  180.0) deg -= 360.0;
         while (deg <= -180.0) deg += 360.0;
         return deg;
     }
 
+    // ── Heading PID ────────────────────────────────────────────────────────────
+
+    private double computeHeadingCorrection() {
+        double error = HEADING - follower.getPose().getHeading();
+        while (error >  Math.PI) error -= 2 * Math.PI;
+        while (error < -Math.PI) error += 2 * Math.PI;
+        return Math.max(-0.5, Math.min(0.5, headingPid.calculate(0, error)));
+    }
+
     // ── Telemetry ──────────────────────────────────────────────────────────────
 
     private void renderTelemetry() {
         Pose p = follower.getPose();
-        telemetry.addData("State",   "%s (step %d)", state, step);
-        telemetry.addData("Pose",    "(%.1f, %.1f) %.0f°",
+        telemetry.addData("State",  "%s (step %d)", state, step);
+        telemetry.addData("Pose",   "(%.1f, %.1f) %.0f°",
                 p.getX(), p.getY(), Math.toDegrees(p.getHeading()));
-        Double tgtTx = shooter.getTrackedTagTx();
-        Double rawTx = shooter.getRawTagTx();
-        double estTx = shooter.getEstimatedTx();
-        Double fallbackGoal = tgtTx == null ? computeGoalTurretAngleDeg(GOAL) : null;
-        telemetry.addData("Turret",  "%.1f deg  tgtTx=%s rawTx=%s  estTx=%s  dist %.0f cm",
+        double hErr = HEADING - p.getHeading();
+        while (hErr >  Math.PI) hErr -= 2 * Math.PI;
+        while (hErr < -Math.PI) hErr += 2 * Math.PI;
+        telemetry.addData("Heading", "%.1f° (err %.1f°, tol %.1f°)",
+                Math.toDegrees(p.getHeading()), Math.toDegrees(hErr), HEADING_TOLERANCE_DEG);
+        telemetry.addData("Turret", "%.1f deg  goal=%.1f°  dist=%.0f cm  locked=%b",
                 shooter.getTurretAngleDeg(),
-                tgtTx != null ? String.format("%.1f°", tgtTx) : "no tag",
-                rawTx != null ? String.format("%.1f°", rawTx) : "-",
-                Double.isNaN(estTx) ? "?" : String.format("%.1f°", estTx),
-                shooter.getTrackedTagDistanceCm());
-        telemetry.addData("GoalAim", tgtTx != null ? "tag" : String.format("%.1f°", fallbackGoal));
-        telemetry.addData("LL",      shooter.getLimelightDebugInfo());
-        telemetry.addData("Hood",    "%.3f", hood.getPosition());
-        telemetry.addData("RPM",     "%.0f / %.0f  fired=%b  turretLocked=%b",
-                shooter.getShooterVelocityRpm(), SHOOT_RPM, shooterFired, shooter.isTurretLocked());
+                computeGoalTurretAngleDeg(GOAL),
+                goalDistanceCm(),
+                shooter.isTurretLocked());
+        telemetry.addData("Hood",   "%.3f", hood.getPosition());
+        telemetry.addData("RPM",    "%.0f / %.0f  fired=%b",
+                shooter.getShooterVelocityRpm(), SHOOT_RPM, shooterFired);
         if (state == FsmState.PATHING) {
             telemetry.addData("PathIdx", "%d", follower.getChainIndex());
         }

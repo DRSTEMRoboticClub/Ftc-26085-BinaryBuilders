@@ -709,11 +709,6 @@ public class ShooterSubsystem extends SubsystemBase {
      * @return the power to actually send to the motor (0 if it would push past the limit)
      */
     private double applyCableLimit(double desired) {
-        double angle = getTurretAngleDeg();
-        double lim   = LocalizationConfig.TURRET_FLIP_ANGLE;
-        // Positive power increases the turret angle (CCW per ANGLE_SIGN).
-        if (angle >=  lim && desired > 0) return 0;   // at + limit, pushing further + → stop
-        if (angle <= -lim && desired < 0) return 0;   // at - limit, pushing further - → stop
         return desired;
     }
 

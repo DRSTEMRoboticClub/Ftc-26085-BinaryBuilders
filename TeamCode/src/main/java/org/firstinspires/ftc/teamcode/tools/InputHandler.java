@@ -115,8 +115,10 @@ public class InputHandler {
             shooter.setShooterVelocityRpm(ShooterConfig.NEAR_RPM); // ignored if polynomial override is active
         } else if (g2.gamepad.left_bumper) {
             shooter.setShooterVelocityRpm(ShooterConfig.NEAR_RPM);
+            hood.setPosition(ShooterConfig.NEAR_PITCH);
         } else if (g2.gamepad.right_bumper) {
             shooter.setShooterVelocityRpm(ShooterConfig.FAR_RPM);
+            hood.setPosition(ShooterConfig.FAR_PITCH);
         } else {
             shooter.setShooterVelocityRpm(0);
         }
@@ -133,23 +135,23 @@ public class InputHandler {
         }
 
         // ── G2 D-pad: live RPM tuning ────────────────────────────────────────
-        // Left/Right: adjust near RPM  |  Up/Down: adjust far RPM
+        // Up/Down: adjust near RPM  |  Left/Right: adjust far RPM
         long now = System.currentTimeMillis();
-        if (shouldStep("g2_dpad_right", g2.gamepad.dpad_right,
-                g2.wasJustPressed(GamepadKeys.Button.DPAD_RIGHT), now)) {
+        if (shouldStep("g2_dpad_up", g2.gamepad.dpad_up,
+                g2.wasJustPressed(GamepadKeys.Button.DPAD_UP), now)) {
             ShooterConfig.NEAR_RPM = Math.min(ShooterConfig.MAX_LAUNCHER_RPM,
                     ShooterConfig.NEAR_RPM + ShooterConfig.RPM_TUNE_STEP_COARSE);
-        } else if (shouldStep("g2_dpad_left", g2.gamepad.dpad_left,
-                g2.wasJustPressed(GamepadKeys.Button.DPAD_LEFT), now)) {
+        } else if (shouldStep("g2_dpad_down", g2.gamepad.dpad_down,
+                g2.wasJustPressed(GamepadKeys.Button.DPAD_DOWN), now)) {
             ShooterConfig.NEAR_RPM = Math.max(0.0,
                     ShooterConfig.NEAR_RPM - ShooterConfig.RPM_TUNE_STEP_COARSE);
         }
-        if (shouldStep("g2_dpad_up", g2.gamepad.dpad_up,
-                g2.wasJustPressed(GamepadKeys.Button.DPAD_UP), now)) {
+        if (shouldStep("g2_dpad_right", g2.gamepad.dpad_right,
+                g2.wasJustPressed(GamepadKeys.Button.DPAD_RIGHT), now)) {
             ShooterConfig.FAR_RPM = Math.min(ShooterConfig.MAX_LAUNCHER_RPM,
                     ShooterConfig.FAR_RPM + ShooterConfig.RPM_TUNE_STEP_COARSE);
-        } else if (shouldStep("g2_dpad_down", g2.gamepad.dpad_down,
-                g2.wasJustPressed(GamepadKeys.Button.DPAD_DOWN), now)) {
+        } else if (shouldStep("g2_dpad_left", g2.gamepad.dpad_left,
+                g2.wasJustPressed(GamepadKeys.Button.DPAD_LEFT), now)) {
             ShooterConfig.FAR_RPM = Math.max(0.0,
                     ShooterConfig.FAR_RPM - ShooterConfig.RPM_TUNE_STEP_COARSE);
         }

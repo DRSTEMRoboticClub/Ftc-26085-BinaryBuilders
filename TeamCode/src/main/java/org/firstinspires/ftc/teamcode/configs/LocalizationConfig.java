@@ -79,7 +79,7 @@ public class LocalizationConfig {
      * Turret cable-protection limit. When |turret angle from start| exceeds
      * this, the tracker unwinds the opposite way instead of continuing.
      */
-    public static double TURRET_FLIP_ANGLE = 155.0;
+    public static double TURRET_FLIP_ANGLE = 360.0;
 
     /** Hysteresis (deg) — flip drives until (FLIP_ANGLE - HYSTERESIS) on the other side. */
     public static double TURRET_FLIP_HYSTERESIS = 15.0;
