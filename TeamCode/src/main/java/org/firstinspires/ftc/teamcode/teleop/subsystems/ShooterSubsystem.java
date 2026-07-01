@@ -83,6 +83,8 @@ public class ShooterSubsystem extends SubsystemBase {
     private int     cachedTrackedId = -1;      // the fiducial id we actually locked onto (-1 = none)
     private String  cachedDistSource = "none"; // "3D", "TY", or "none" — where cachedDistCm came from
     private String  llPipelineStatus = "not uploaded"; // result of the init pipeline upload
+    private int     cachedLlFps  = 0;
+    private double  cachedLlTempC = 0.0;
     private long    lastTrackedTagMs = 0;      // when we last had a real lock (for TAG_HOLD_MS)
     private boolean tagHeld = false;           // true when current tx/dist are HELD stale, not fresh
     // Aim bias: the PID drives estimatedTx → aimOffsetDeg instead of 0.
@@ -413,6 +415,9 @@ public class ShooterSubsystem extends SubsystemBase {
         launcherLeft.setPower(output);
         launcherRight.setPower(output);
     }
+
+    public double getLeftShooterTps()  { return Math.abs(launcherLeft.getVelocity()); }
+    public double getRightShooterTps() { return Math.abs(launcherRight.getVelocity()); }
 
     public double getLeftShooterRpm() {
         return ticksPerSecondToRpm(Math.abs(launcherLeft.getVelocity()));
@@ -800,7 +805,11 @@ public class ShooterSubsystem extends SubsystemBase {
                 double xRight = camSpace.getPosition().toUnit(DistanceUnit.CM).x; // +right
                 double yUp    = camSpace.getPosition().toUnit(DistanceUnit.CM).y; // +up
                 double zFwd   = camSpace.getPosition().toUnit(DistanceUnit.CM).z; // +forward
-                double d = Math.hypot(xRight, zFwd);
+                // Camera is mounted 15° upward, so project camera Z onto the horizontal plane:
+                // floor_forward = zFwd·cos(tilt) − yUp·sin(tilt)
+                double tilt = Math.toRadians(ShooterConfig.CAMERA_TILT_DEG);
+                double hFwd = zFwd * Math.cos(tilt) - yUp * Math.sin(tilt);
+                double d = Math.hypot(xRight, hFwd);
                 if (d > 0 && !Double.isNaN(d) && !Double.isInfinite(d)) {
                     cachedTagXCm = xRight;
                     cachedTagYCm = yUp;
@@ -847,8 +856,10 @@ public class ShooterSubsystem extends SubsystemBase {
         if (++statusUpdateCounter % 25 != 0) return cachedStatusString;
         try {
             LLStatus s = limelight.getStatus();
+            cachedLlFps   = (int) s.getFps();
+            cachedLlTempC = s.getTemp();
             cachedStatusString = String.format("fps=%d cpu=%.0f%% %.0fC",
-                    (int) s.getFps(), s.getCpu(), s.getTemp());
+                    cachedLlFps, s.getCpu(), cachedLlTempC);
         } catch (Throwable t) {
             cachedStatusString = "ERR";
         }
@@ -878,6 +889,8 @@ public class ShooterSubsystem extends SubsystemBase {
 
     /** Result of uploading the bundled pipeline config at init (for telemetry). */
     public String getPipelineUploadStatus() { return llPipelineStatus; }
+    public int    getLimelightFps()   { return cachedLlFps; }
+    public double getLimelightTempC() { return cachedLlTempC; }
 
     /** True when tx/distance are being held from a recent sighting through detection flicker. */
     public boolean isTagHeld() { return tagHeld; }

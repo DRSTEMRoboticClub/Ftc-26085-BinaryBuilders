@@ -9,6 +9,7 @@ import com.pedropathing.paths.PathChain;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 
+import org.firstinspires.ftc.teamcode.configs.IntakeConfig;
 import org.firstinspires.ftc.teamcode.configs.ShooterConfig;
 import org.firstinspires.ftc.teamcode.teleop.subsystems.HoodSubsystem;
 import org.firstinspires.ftc.teamcode.teleop.subsystems.IntakeSubsystem;
@@ -119,8 +120,6 @@ public class AutoRedFar extends LinearOpMode {
         ShooterConfig.TRACKED_TAG_ID = 24; // Red alliance hub tag
         runner.setStartPose(START_SHOOT);
         hood.setPosition(SHOOT_HOOD_POS);
-        shooter.switchPipeline(ShooterConfig.APRILTAG_PIPELINE);
-
         telemetry.addLine("Auto Red Far — waiting for start");
         telemetry.addData("SHOOT_RPM",      SHOOT_RPM);
         telemetry.addData("SHOOT_HOOD_POS", SHOOT_HOOD_POS);
@@ -134,7 +133,6 @@ public class AutoRedFar extends LinearOpMode {
 
         while (opModeIsActive() && !isStopRequested()) {
             Pose currentPose = follower.getPose();
-            shooter.cacheLimelightResult();
             shooter.setRobotPose(currentPose.getX(), currentPose.getY(),
                     Math.toDegrees(currentPose.getHeading()));
 
@@ -223,7 +221,7 @@ public class AutoRedFar extends LinearOpMode {
         state                 = FsmState.WAIT;
         waitStartMs           = System.currentTimeMillis();
         turretTrackingEnabled = false;
-        intake.setPower(0);
+        intake.setPower(IntakeConfig.INTAKE_HOLD_POWER);
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
         shooter.setShooterVelocityRpm(SHOOT_RPM);
     }
@@ -256,7 +254,7 @@ public class AutoRedFar extends LinearOpMode {
         state                 = FsmState.PATHING;
         turretTrackingEnabled = false;
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
-        intake.setPower(runIntake ? INTAKE_POWER : 0);
+        intake.setPower(runIntake ? INTAKE_POWER : IntakeConfig.INTAKE_HOLD_POWER);
         hood.setPosition(SHOOT_HOOD_POS);
         shooter.setShooterVelocityRpm(SHOOT_RPM);
         runner.followPath(chain);
@@ -281,7 +279,7 @@ public class AutoRedFar extends LinearOpMode {
         timedDriveFwd         = fwd;
         timedDriveStrafe      = strafe;
         timedDriveEndMs       = System.currentTimeMillis() + durationMs;
-        intake.setPower(runIntake ? INTAKE_POWER : 0);
+        intake.setPower(runIntake ? INTAKE_POWER : IntakeConfig.INTAKE_HOLD_POWER);
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
         shooter.setShooterVelocityRpm(SHOOT_RPM);
         headingPid.reset();
@@ -305,7 +303,7 @@ public class AutoRedFar extends LinearOpMode {
         shooterFired          = false;
         fireStartMs           = 0;
         turretTrackingEnabled = autoAim;
-        intake.setPower(0);
+        intake.setPower(IntakeConfig.INTAKE_HOLD_POWER);
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
         shooter.setShooterVelocityRpm(SHOOT_RPM);
         hood.setPosition(SHOOT_HOOD_POS);
@@ -347,7 +345,7 @@ public class AutoRedFar extends LinearOpMode {
             }
         } else if (System.currentTimeMillis() - fireStartMs >= SHOOT_FIRE_MS) {
             shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
-            intake.setPower(0);
+            intake.setPower(IntakeConfig.INTAKE_HOLD_POWER);
             advance();
         }
     }

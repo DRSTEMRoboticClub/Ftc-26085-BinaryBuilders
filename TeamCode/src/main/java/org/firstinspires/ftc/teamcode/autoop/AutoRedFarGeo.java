@@ -9,6 +9,7 @@ import com.pedropathing.paths.PathChain;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 
+import org.firstinspires.ftc.teamcode.configs.IntakeConfig;
 import org.firstinspires.ftc.teamcode.configs.ShooterConfig;
 import org.firstinspires.ftc.teamcode.teleop.subsystems.HoodSubsystem;
 import org.firstinspires.ftc.teamcode.teleop.subsystems.IntakeSubsystem;
@@ -212,7 +213,7 @@ public class AutoRedFarGeo extends LinearOpMode {
         state                 = FsmState.WAIT;
         waitStartMs           = System.currentTimeMillis();
         turretTrackingEnabled = false;
-        intake.setPower(0);
+        intake.setPower(IntakeConfig.INTAKE_HOLD_POWER);
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
         shooter.setShooterVelocityRpm(SHOOT_RPM);
     }
@@ -245,7 +246,7 @@ public class AutoRedFarGeo extends LinearOpMode {
         state                 = FsmState.PATHING;
         turretTrackingEnabled = false;
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
-        intake.setPower(runIntake ? INTAKE_POWER : 0);
+        intake.setPower(runIntake ? INTAKE_POWER : IntakeConfig.INTAKE_HOLD_POWER);
         hood.setPosition(SHOOT_HOOD_POS);
         shooter.setShooterVelocityRpm(SHOOT_RPM);
         runner.followPath(chain);
@@ -270,7 +271,7 @@ public class AutoRedFarGeo extends LinearOpMode {
         timedDriveFwd         = fwd;
         timedDriveStrafe      = strafe;
         timedDriveEndMs       = System.currentTimeMillis() + durationMs;
-        intake.setPower(runIntake ? INTAKE_POWER : 0);
+        intake.setPower(runIntake ? INTAKE_POWER : IntakeConfig.INTAKE_HOLD_POWER);
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
         shooter.setShooterVelocityRpm(SHOOT_RPM);
         headingPid.reset();
@@ -294,7 +295,7 @@ public class AutoRedFarGeo extends LinearOpMode {
         shooterFired          = false;
         fireStartMs           = 0;
         turretTrackingEnabled = autoAim;
-        intake.setPower(0);
+        intake.setPower(IntakeConfig.INTAKE_HOLD_POWER);
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
         shooter.setShooterVelocityRpm(SHOOT_RPM);
         hood.setPosition(SHOOT_HOOD_POS);
@@ -335,7 +336,7 @@ public class AutoRedFarGeo extends LinearOpMode {
             }
         } else if (System.currentTimeMillis() - fireStartMs >= SHOOT_FIRE_MS) {
             shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
-            intake.setPower(0);
+            intake.setPower(IntakeConfig.INTAKE_HOLD_POWER);
             advance();
         }
     }

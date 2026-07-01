@@ -8,6 +8,7 @@ import com.pedropathing.paths.PathChain;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 
+import org.firstinspires.ftc.teamcode.configs.IntakeConfig;
 import org.firstinspires.ftc.teamcode.configs.ShooterConfig;
 import org.firstinspires.ftc.teamcode.teleop.subsystems.HoodSubsystem;
 import org.firstinspires.ftc.teamcode.teleop.subsystems.IntakeSubsystem;
@@ -28,9 +29,9 @@ public class AutoRedNear extends LinearOpMode {
     private static final Pose SHOOT_START  = new Pose( 88.500,  88.000, HEADING);
     private static final Pose BALL1_SWEEP  = new Pose(102.500,  77.000, HEADING);
     private static final Pose BALL1        = new Pose(115.500,  77.000, HEADING);
-    private static final Pose BALL2_SWEEP  = new Pose(93.500,  48.000, HEADING);
-    private static final Pose BALL2        = new Pose(127.000,  48.000, HEADING);
-    private static final Pose FINAL        = new Pose(131.500,  88.000, HEADING);
+    private static final Pose BALL2_SWEEP  = new Pose(93.500,  47.000, HEADING);
+    private static final Pose BALL2        = new Pose(127.000,  47.000, 15);
+    private static final Pose FINAL        = new Pose(128.500,  88.000, HEADING);
     private static final Pose SHOOT        = new Pose( 91.500,  83.000, HEADING);
     // RELEASE heading mirrors 165° → 15° (π - 165° = 15°)
     private static final Pose RELEASE      = new Pose(125.000,  62.500, HEADING);
@@ -81,8 +82,6 @@ public class AutoRedNear extends LinearOpMode {
         ShooterConfig.TRACKED_TAG_ID = 24; // Red alliance hub tag
         runner.setStartPose(START);
         hood.setPosition(SHOOT_HOOD_POS);
-        shooter.switchPipeline(ShooterConfig.APRILTAG_PIPELINE);
-
         telemetry.addLine("Auto Red Near — waiting for start");
         telemetry.addData("SHOOT_RPM",      SHOOT_RPM);
         telemetry.addData("SHOOT_HOOD_POS", SHOOT_HOOD_POS);
@@ -96,7 +95,6 @@ public class AutoRedNear extends LinearOpMode {
 
         while (opModeIsActive() && !isStopRequested()) {
             Pose currentPose = follower.getPose();
-            shooter.cacheLimelightResult();
             shooter.setRobotPose(currentPose.getX(), currentPose.getY(),
                     Math.toDegrees(currentPose.getHeading()));
 
@@ -161,7 +159,7 @@ public class AutoRedNear extends LinearOpMode {
         state = FsmState.PATHING;
         turretTrackingEnabled = false;
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
-        intake.setPower(runIntake ? INTAKE_POWER : 0);
+        intake.setPower(runIntake ? INTAKE_POWER : IntakeConfig.INTAKE_HOLD_POWER);
         hood.setPosition(SHOOT_HOOD_POS);
         shooter.setShooterVelocityRpm(SHOOT_RPM);
         runner.followPath(chain);
@@ -182,7 +180,7 @@ public class AutoRedNear extends LinearOpMode {
         turretTrackingEnabled = true;
         shooterFired = false;
         fireStartMs  = 0;
-        intake.setPower(0);
+        intake.setPower(IntakeConfig.INTAKE_HOLD_POWER);
         hood.setPosition(SHOOT_HOOD_POS);
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
         shooter.setShooterVelocityRpm(SHOOT_RPM);
@@ -201,7 +199,7 @@ public class AutoRedNear extends LinearOpMode {
             }
         } else if (System.currentTimeMillis() - fireStartMs >= SHOOT_FIRE_MS) {
             shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
-            intake.setPower(0);
+            intake.setPower(IntakeConfig.INTAKE_HOLD_POWER);
             advance();
         }
     }
@@ -220,7 +218,7 @@ public class AutoRedNear extends LinearOpMode {
     private void tickIntakeWait() {
         shooter.setShooterVelocityRpm(SHOOT_RPM);
         if (System.currentTimeMillis() - intakeWaitStart >= INTAKE_WAIT_MS) {
-            intake.setPower(0);
+            intake.setPower(IntakeConfig.INTAKE_HOLD_POWER);
             advance();
         }
     }
@@ -250,7 +248,7 @@ public class AutoRedNear extends LinearOpMode {
                 .addPath(new BezierLine(SHOOT, BALL2_SWEEP))
                 .setConstantHeadingInterpolation(HEADING)
                 .addPath(new BezierLine(BALL2_SWEEP, BALL2))
-                .setConstantHeadingInterpolation(HEADING)
+                .setConstantHeadingInterpolation(Math.toRadians(15))
                 .addPath(new BezierLine(BALL2, SHOOT))
                 .setConstantHeadingInterpolation(HEADING)
                 .build();
@@ -260,7 +258,7 @@ public class AutoRedNear extends LinearOpMode {
     private PathChain chainShootToRelease() {
         return follower.pathBuilder()
                 .addPath(new BezierLine(SHOOT, RELEASE))
-                .setConstantHeadingInterpolation(Math.toRadians(15))
+                .setConstantHeadingInterpolation(HEADING)
                 .build();
     }
 

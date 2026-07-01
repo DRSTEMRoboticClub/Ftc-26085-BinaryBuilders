@@ -235,88 +235,78 @@ public class TeleOpRed extends CommandOpMode {
     }
 
     private void renderTelemetry(long loopTime, double voltage) {
-        Double tx   = shooter.getTrackedTagTx();
-        double dist = shooter.getTrackedTagDistanceCm();
-        long tagStreakMs = (tagVisibleSinceMs == 0) ? 0 : System.currentTimeMillis() - tagVisibleSinceMs;
+        Double tx        = shooter.getTrackedTagTx();
+        double dist      = shooter.getTrackedTagDistanceCm();
+        double turretDeg = shooter.getTurretAngleDeg();
+        Pose2d pose      = localizer.getPose();
 
-        String voltWarn = voltage < 11.0 ? " !!LOW!!" : voltage < 12.0 ? " !LOW!" : "";
-        telemetry.addLine(String.format("RED  | tag %d | aim %s | hood %s | LL %s | %dms | %.2fV (min %.2fV)%s",
-                ShooterConfig.TRACKED_TAG_ID, shooter.isAutoAimEnabled() ? "ON" : "OFF",
-                inputHandler.isManualMode() ? "MANUAL(G2)" : "AUTO(poly)",
-                shooter.isLimelightEnabled() ? "ON" : "OFF",
-                loopTime, voltage, minVoltage, voltWarn));
+        // ── Line 1: Team colour + key status ─────────────────────────────────
+        String voltStr  = voltage < 11.0 ? String.format("%.1fV !!LOW!!", voltage)
+                        : voltage < 12.0 ? String.format("%.1fV !LOW!",   voltage)
+                        :                  String.format("%.1fV",          voltage);
+        String aimStr   = shooter.isAutoAimEnabled() ? "ON" : "OFF";
+        String hoodMode = inputHandler.isManualMode() ? "MANUAL" : "AUTO";
+        telemetry.addLine(String.format(
+                "[ RED  ]  Tag: %d  Aim: %s  Hood: %s  │  %s  %dms",
+                ShooterConfig.TRACKED_TAG_ID, aimStr, hoodMode, voltStr, loopTime));
 
-        if (tx != null) {
-            double normPct = Math.abs(tx) / ShooterConfig.CAMERA_HALF_FOV_DEG * 100.0;
-            String distStr = effectiveDist > 0
-                    ? String.format("dist %.0fcm %s", effectiveDist, usingLocFallback ? "[LOC]" : "[LL]")
-                    : "no dist";
-            telemetry.addLine(String.format("LL  TAG  tx %.1f (%.0f%%)  %s  | vis %.1fs | %s",
-                    tx, normPct, distStr, tagStreakMs / 1000.0,
-                    shooter.getLimelightStatus()));
+        // ── Line 2: Limelight ─────────────────────────────────────────────────
+        String llOn    = shooter.isLimelightEnabled() ? "ON" : "OFF";
+        String distStr = effectiveDist > 0
+                ? String.format("%.0f cm %s", effectiveDist, usingLocFallback ? "[LOC]" : "[LL]")
+                : "NO DIST";
+        String tagsStr = shooter.getVisibleTagIds();
+        telemetry.addLine(String.format(
+                "LL: %-3s  │  Dist: %-12s  │  FPS: %2d  Temp: %.0f°C  │  Tags: [%s]",
+                llOn, distStr, shooter.getLimelightFps(), shooter.getLimelightTempC(), tagsStr));
+
+        // ── Line 3: Hood + RPM ────────────────────────────────────────────────
+        double actualRpm = (shooter.getLeftShooterRpm() + shooter.getRightShooterRpm()) / 2.0;
+        double targetRpm = shooter.getEffectiveTargetRpm();
+        String modeStr;
+        if (!inputHandler.isManualMode() && ShooterConfig.USE_DISTANCE_COMPENSATION && effectiveDist > 0) {
+            modeStr = "POLYNOMIAL";
+        } else if (!inputHandler.isManualMode()) {
+            modeStr = "AUTO/NO TAG";
         } else {
-            String src = usingLocFallback ? "[LOC dist]" : "";
-            telemetry.addLine(String.format("LL  no lock %s| %s",
-                    src, shooter.getLimelightStatus()));
+            modeStr = "MANUAL";
         }
-        // Always-on LL diagnostics — tells you WHY there is no lock:
-        //   fids=0            → LL sees no AprilTags (wrong pipeline? not pointed at a tag?)
-        //   fids>0 ids=[20]   → it sees tag 20 but track=24 → TRACKED_TAG_ID mismatch
-        //   valid=false       → result invalid (LL still booting / bad frame)
-        //   "not started"     → LL off (G2-X toggle) or USB not enumerated
-        telemetry.addLine("LLdbg " + shooter.getLimelightDebugInfo());
-        telemetry.addLine("LLpipe " + shooter.getPipelineUploadStatus());
+        telemetry.addLine(String.format(
+                "Hood: %.3f  │  CRPM: %5.0f / %5.0f  │  Near: %.0f  Far: %.0f  Calib: %.0f  │  %s",
+                hood.getPosition(), actualRpm, targetRpm,
+                ShooterConfig.NEAR_RPM, ShooterConfig.FAR_RPM, ShooterConfig.CALIBRATION_RPM,
+                modeStr));
 
-        telemetry.addLine(String.format("RPM  NEAR %.0f (↑↓)  FAR %.0f (←→)",
-                ShooterConfig.NEAR_RPM, ShooterConfig.FAR_RPM));
-        // Manual tuning readout (G2 D-pad L/R = power, U/D = hood).
-        telemetry.addLine(String.format("MANUAL  power(RPM) %.0f -> act %.0f  |  hood %.3f",
-                ShooterConfig.MANUAL_TARGET_RPM, shooter.getShooterVelocityRpm(),
-                hood.getPosition()));
+        // ── Line 4: Shooter motors ────────────────────────────────────────────
+        telemetry.addLine(String.format(
+                "SHOOTER  │  L: %.0f tps  %.0f RPM  │  R: %.0f tps  %.0f RPM",
+                shooter.getLeftShooterTps(),  shooter.getLeftShooterRpm(),
+                shooter.getRightShooterTps(), shooter.getRightShooterRpm()));
 
-        if (effectiveDist > 0) {
-            double d = Math.max(ShooterConfig.MIN_COMP_DISTANCE,
-                    Math.min(effectiveDist, ShooterConfig.MAX_COMP_DISTANCE));
-            double targetRpm = ShooterConfig.hoodTuneAngle(d);
-            telemetry.addLine(String.format("Poly %.0fcm -> %.0f RPM | L=%.0f R=%.0f raw=%.0f t/s",
-                    d, targetRpm,
-                    shooter.getLeftShooterRpm(), shooter.getRightShooterRpm(),
-                    shooter.getRawLauncherTicksPerSec()));
-            telemetry.addLine(String.format("Hood poly=%.2f actual=%.2f | CPR=%d",
-                    ShooterConfig.hoodPitch(d), hood.getPosition(),
-                    (int) ShooterConfig.SHOOTER_ENCODER_EVENTS_PER_REV));
-        } else {
-            telemetry.addLine(String.format("Shooter L=%.0f R=%.0f target=%.0f RPM | raw=%.0f t/s",
-                    shooter.getLeftShooterRpm(), shooter.getRightShooterRpm(),
-                    shooter.getEffectiveTargetRpm(), shooter.getRawLauncherTicksPerSec()));
-        }
-
-        Pose2d pose = localizer.getPose();
-        String turretSrc = !shooter.isAutoAimEnabled()       ? "MAN"
-                : shooter.isTurretAtLimit()                  ? "LIMIT"
-                : shooter.isTurretSearching()                ? "SEEK"
-                : shooter.getTrackedTagTx() != null          ? "LL"
+        // ── Line 5: Turret ────────────────────────────────────────────────────
+        String turretSrc = !shooter.isAutoAimEnabled()  ? "MAN"
+                : shooter.isTurretAtLimit()             ? "LIMIT"
+                : shooter.isTurretSearching()           ? "SEEK"
+                : tx != null                            ? "LL"
                 : "HOLD";
-        double turretAngleDeg = shooter.getTurretAngleDeg();
-        String limitWarn = Math.abs(turretAngleDeg) >= LocalizationConfig.TURRET_FLIP_ANGLE * 0.85
-                ? " !LIMIT!" : "";
-        telemetry.addLine(String.format("Turret %.2f %s | %.1f° (ticks %d) flip@%.0f°%s",
-                shooter.getLastTurretPower(), turretSrc,
-                turretAngleDeg, shooter.getTurretTicks(),
+        String limitWarn = Math.abs(turretDeg) >= LocalizationConfig.TURRET_FLIP_ANGLE * 0.85
+                ? "  !! NEAR LIMIT !!" : "";
+        String txStr = tx != null ? String.format("TX: %+.1f°", tx) : "TX: --";
+        telemetry.addLine(String.format(
+                "Turret: %+6.1f°  [%-5s]  │  %s  │  Ticks: %d  Flip@%.0f°%s",
+                turretDeg, turretSrc, txStr, shooter.getTurretTicks(),
                 LocalizationConfig.TURRET_FLIP_ANGLE, limitWarn));
-        telemetry.addLine(String.format("Pose %.0f,%.0f H%.0f | P=%.3f I=%.3f D=%.4f",
+
+        // ── Line 6: Robot pose ────────────────────────────────────────────────
+        telemetry.addLine(String.format(
+                "Pose: (%.0f, %.0f)  H: %.0f°  │  Cal: %s  │  Loop: %dms  MaxLoop: %dms",
                 pose.position.x, pose.position.y, drive.getHeading(),
-                ShooterConfig.TURRET_P, ShooterConfig.TURRET_I, ShooterConfig.TURRET_D));
+                localizerCalibrated ? "YES" : "NO ", loopTime, maxLoopMs));
 
-        // Heap + GC diagnostics — heap drops while tag visible → GC pressure from LL SDK.
-        // gc>30ms rises steadily → GC pauses are the disconnect cause.
-        // If heap is stable but gc>30ms still rises → something else is stalling the loop.
-        telemetry.addLine(String.format("Heap %dMB free / %dMB alloc | gc>30ms: %d loops",
-                heapFreeMb, heapTotalMb, longLoopCount));
-
-        telemetry.addLine(String.format("Health maxLoop %dms minV %.1f err %d (%s)",
-                maxLoopMs, minVoltage, loopErrors, lastError));
-        telemetry.addLine("Uncaught: " + lastUncaught);
+        // ── Diagnostics (health + uncaught) ───────────────────────────────────
+        telemetry.addLine(String.format(
+                "Health: %.1fV min  Err: %d (%s)  Heap: %dMB/%dMB  GC>30ms: %d",
+                minVoltage, loopErrors, lastError, heapFreeMb, heapTotalMb, longLoopCount));
     }
 
     /**

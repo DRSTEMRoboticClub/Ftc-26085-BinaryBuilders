@@ -43,8 +43,8 @@ public class InputHandler {
         g1.readButtons();
         g2.readButtons();
 
-        // Emergency: A on either — reverse intake, reverse launcher, open stopper
-        if (g1.gamepad.a || g2.gamepad.a) {
+        // Emergency: G1 A — reverse intake, reverse launcher, open stopper
+        if (g1.gamepad.a) {
             intake.setPower(IntakeConfig.INTAKE_REV_POWER);
             shooter.setShooterVelocityRpm(-0.5 * ShooterConfig.MAX_LAUNCHER_RPM);
             shooter.setStopperPosition(ShooterConfig.STOPPER_OPEN);
@@ -105,13 +105,19 @@ public class InputHandler {
         }
 
         // Launcher RPM:
+        //   A held (neutral/calibration) → CALIBRATION_RPM, hood untouched, autoaim off
         //   Left Trigger held (autoaim)  → polynomial override set by applyShooterCompensation;
         //                                  setShooterVelocityRpm is ignored while override is active,
         //                                  but we set NEAR_RPM here as a fallback when no tag is visible
         //   Left Bumper held             → near RPM (manual, no autoaim)
         //   Right Bumper held            → far RPM  (manual, no autoaim)
         //   Otherwise                    → stop
-        if (shooterHoldMode) {
+        boolean neutralShot = g2.gamepad.a;
+        if (neutralShot) {
+            shooter.setAutoAimEnabled(false);
+            shooter.setShooterVelocityRpm(ShooterConfig.CALIBRATION_RPM);
+            // hood is intentionally not touched — stays at whatever position it was set to
+        } else if (shooterHoldMode) {
             shooter.setShooterVelocityRpm(ShooterConfig.NEAR_RPM); // ignored if polynomial override is active
         } else if (g2.gamepad.left_bumper) {
             shooter.setShooterVelocityRpm(ShooterConfig.NEAR_RPM);
@@ -134,9 +140,19 @@ public class InputHandler {
             intake.setPower(intaking ? IntakeConfig.INTAKE_FWD_POWER : 0);
         }
 
+        // ── G2 Y/X: calibration RPM tuning (used with A neutral shot) ───────────
+        // Y = raise CALIBRATION_RPM, X = lower it
+        long now = System.currentTimeMillis();
+        if (shouldStep("g2_y", g2.gamepad.y, g2.wasJustPressed(GamepadKeys.Button.Y), now)) {
+            ShooterConfig.CALIBRATION_RPM = Math.min(ShooterConfig.MAX_LAUNCHER_RPM,
+                    ShooterConfig.CALIBRATION_RPM + ShooterConfig.RPM_TUNE_STEP_COARSE);
+        } else if (shouldStep("g2_x", g2.gamepad.x, g2.wasJustPressed(GamepadKeys.Button.X), now)) {
+            ShooterConfig.CALIBRATION_RPM = Math.max(0.0,
+                    ShooterConfig.CALIBRATION_RPM - ShooterConfig.RPM_TUNE_STEP_COARSE);
+        }
+
         // ── G2 D-pad: live RPM tuning ────────────────────────────────────────
         // Up/Down: adjust near RPM  |  Left/Right: adjust far RPM
-        long now = System.currentTimeMillis();
         if (shouldStep("g2_dpad_up", g2.gamepad.dpad_up,
                 g2.wasJustPressed(GamepadKeys.Button.DPAD_UP), now)) {
             ShooterConfig.NEAR_RPM = Math.min(ShooterConfig.MAX_LAUNCHER_RPM,

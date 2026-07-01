@@ -9,6 +9,7 @@ import com.pedropathing.paths.PathChain;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 
+import org.firstinspires.ftc.teamcode.configs.IntakeConfig;
 import org.firstinspires.ftc.teamcode.configs.ShooterConfig;
 import org.firstinspires.ftc.teamcode.teleop.subsystems.HoodSubsystem;
 import org.firstinspires.ftc.teamcode.teleop.subsystems.IntakeSubsystem;
@@ -113,7 +114,7 @@ public class AutoBlueFar extends LinearOpMode {
     // SHOOTING sub-state
     private boolean shooterFired    = false;
     private long    fireStartMs     = 0;
-    private boolean driftInProgress = false; // true while the timed drift strafe is active
+    private boolean driftInProgress = false;
     private long    driftStartMs    = 0;
 
     // Turret tracking — enabled only during SHOOTING and on the return leg of each ball path.
@@ -234,7 +235,7 @@ public class AutoBlueFar extends LinearOpMode {
         state                 = FsmState.WAIT;
         waitStartMs           = System.currentTimeMillis();
         turretTrackingEnabled = false;
-        intake.setPower(0);
+        intake.setPower(IntakeConfig.INTAKE_HOLD_POWER);
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
         shooter.setShooterVelocityRpm(SHOOT_RPM);
     }
@@ -267,7 +268,7 @@ public class AutoBlueFar extends LinearOpMode {
         state                 = FsmState.PATHING;
         turretTrackingEnabled = false;
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
-        intake.setPower(runIntake ? INTAKE_POWER : 0);
+        intake.setPower(runIntake ? INTAKE_POWER : IntakeConfig.INTAKE_HOLD_POWER);
         hood.setPosition(SHOOT_HOOD_POS);
         shooter.setShooterVelocityRpm(SHOOT_RPM);
         runner.followPath(chain);
@@ -292,7 +293,7 @@ public class AutoBlueFar extends LinearOpMode {
         timedDriveFwd         = fwd;
         timedDriveStrafe      = strafe;
         timedDriveEndMs       = System.currentTimeMillis() + durationMs;
-        intake.setPower(runIntake ? INTAKE_POWER : 0);
+        intake.setPower(runIntake ? INTAKE_POWER : IntakeConfig.INTAKE_HOLD_POWER);
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
         shooter.setShooterVelocityRpm(SHOOT_RPM);
         headingPid.reset();
@@ -316,7 +317,7 @@ public class AutoBlueFar extends LinearOpMode {
         shooterFired          = false;
         fireStartMs           = 0;
         turretTrackingEnabled = autoAim;
-        intake.setPower(0);
+        intake.setPower(IntakeConfig.INTAKE_HOLD_POWER);
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
         shooter.setShooterVelocityRpm(SHOOT_RPM);
         hood.setPosition(SHOOT_HOOD_POS);
@@ -347,14 +348,10 @@ public class AutoBlueFar extends LinearOpMode {
         }
         follower.setTeleOpDrive(0, strafe, turnCorrection, true);
         if (!shooterFired) {
-            double targetRpm = shooter.getEffectiveTargetRpm();
+            double targetRpm     = shooter.getEffectiveTargetRpm();
             boolean atSpeed      = Math.abs(shooter.getShooterVelocityRpm() - targetRpm) < SHOOT_RPM_TOLERANCE;
             boolean timedOut     = elapsed > SHOOT_SPINUP_TIMEOUT_MS;
-            // Only fire once the turret has settled at the aim offset — prevents firing while the
-            // PID is still hunting, which causes the turret to oscillate side-to-side mid-shot.
             boolean turretReady  = shooter.isTurretLocked() || elapsed > SHOOT_TURRET_LOCK_TIMEOUT_MS;
-            // Gate on heading settled — prevents firing while the chassis is still spinning from
-            // drift. Falls back to firing after SHOOT_TURRET_LOCK_TIMEOUT_MS regardless.
             boolean headingOk    = Math.abs(headingError) < Math.toRadians(HEADING_TOLERANCE_DEG)
                     || elapsed > SHOOT_TURRET_LOCK_TIMEOUT_MS;
             if (timedOut || (atSpeed && turretReady && headingOk && !driftInProgress)) {
@@ -365,7 +362,7 @@ public class AutoBlueFar extends LinearOpMode {
             }
         } else if (System.currentTimeMillis() - fireStartMs >= SHOOT_FIRE_MS) {
             shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
-            intake.setPower(0);
+            intake.setPower(IntakeConfig.INTAKE_HOLD_POWER);
             advance();
         }
     }

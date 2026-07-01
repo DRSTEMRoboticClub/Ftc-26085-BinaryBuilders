@@ -26,7 +26,7 @@ public class ShooterConfig {
     public static double AUTO_AIM_DEADBAND_DEG = 1.5;
     public static double AUTO_AIM_P_GAIN       = 0.020;
     public static double AUTO_AIM_MIN_POWER    = 0.035; // lowered: reduces bang-bang oscillation near setpoint
-    public static double AUTO_AIM_MAX_POWER    = 0.5;
+    public static double AUTO_AIM_MAX_POWER    = 0.4;
     public static int TRACKED_TAG_ID = 20; // Blue alliance hub tag; Red = 24
     public static int APRILTAG_PIPELINE = 0;
 
@@ -79,11 +79,11 @@ public class ShooterConfig {
     // NOTE: TARGET_ABOVE_CM shifts the true vertical aim angle but the hoodPitch/hoodTuneAngle
     // polynomials were calibrated at TAG_CENTER_HEIGHT_CM. If the target height changes
     // significantly, re-calibrate those polynomials at the new target height.
-    public static double TARGET_BEHIND_CM = 0;  // cm behind the tag face (into the goal)
+    public static double TARGET_BEHIND_CM = 20;  // cm behind the tag face (into the goal)
     public static double TARGET_ABOVE_CM  = 15.0;  // cm above the tag centre (upward)
 
     public static double STOPPER_CLOSED = 0.0;
-    public static double STOPPER_OPEN = 1.0;
+    public static double STOPPER_OPEN = 0.45;
 
     // Shooter Motor PID
     public static double SHOOTER_P = 0.001;
@@ -117,10 +117,13 @@ public class ShooterConfig {
     public static double SHOOTER_ENCODER_CYCLES_PER_REV = 7.0;
     public static double SHOOTER_ENCODER_EVENTS_PER_REV = 28;
 
+    // Neutral-shot calibration RPM (G2 A to fire, G2 Y/X to raise/lower). Tunable live.
+    public static double CALIBRATION_RPM = 3800.0;
+
     // Manual shooter RPM targets (G2 left/right bumper). Tunable via G2 D-pad.
     public static double NEAR_RPM = 3400.0;  // close shot (~115 cm)
-    public static double NEAR_PITCH = 0.7;
-    public static double FAR_RPM  = 5000.0;  // far shot  (~200 cm)
+    public static double NEAR_PITCH = 0.9;
+    public static double FAR_RPM  = 5100.0;  // far shot  (~200 cm)
     public static double FAR_PITCH = 0;
 
     // Legacy single-target RPM kept for backward compat with any auto modes that still use it.
@@ -138,10 +141,10 @@ public class ShooterConfig {
     // (Horner form — one multiply-add per coefficient, cheap every loop).
     //
     // Calibration data (motorValues.md) — cubic fit through these 4 points:
-    //  115 cm → 3850 RPM, pitch 0.310
-    //  150 cm → 4200 RPM, pitch 0.172
-    //  180 cm → 4600 RPM, pitch 0.000
-    //  200 cm → 5000 RPM, pitch 0.000
+    //   50 cm → 3500 RPM, pitch 0.611
+    //  100 cm → 4200 RPM, pitch 0.161
+    //  150 cm → 4500 RPM, pitch 0.000
+    //  200 cm → 5100 RPM, pitch 0.000
     //
     // TRUE — the polynomial drives RPM + hood pitch automatically whenever the goal tag
     // is in view. The gamepad-2 manual controls still work as a fallback when there is
@@ -149,8 +152,8 @@ public class ShooterConfig {
     public static boolean USE_DISTANCE_COMPENSATION = true;
 
     // Polynomial input is clamped to this range (cm) to prevent extrapolation errors.
-    // Calibration data spans 115–200 cm; clamp to it so the cubic never extrapolates.
-    public static double MIN_COMP_DISTANCE = 115.0;
+    // Calibration data spans 50–200 cm; clamp to it so the cubic never extrapolates.
+    public static double MIN_COMP_DISTANCE = 50.0;
     public static double MAX_COMP_DISTANCE = 200.0;
 
     // ── Camera geometry for TY-based distance (no 3D pose solver needed) ─────
@@ -166,24 +169,22 @@ public class ShooterConfig {
     // Verify by pointing at a tag at known distance and checking "dist" in telemetry.
     public static double CAMERA_HEIGHT_CM     = 29.0;
     public static double TAG_CENTER_HEIGHT_CM = 75.0;
-    public static double CAMERA_TILT_DEG      = 0.0;    // camera is level
+    public static double CAMERA_TILT_DEG      = 15.0;   // camera is tilted 15° upward from horizontal
 
     /**
      * Flywheel target (RPM) for a given distance to the aim target in centimetres.
-     * Cubic through (115,3850) (150,4200) (180,4450) (200,4800) — Horner form.
+     * Cubic through (50,3500) (100,4200) (150,4500) (200,5100) — Horner form.
      */
     public static double hoodTuneAngle(double d) {
-        return ((4.91704374057315e-3 * d - 2.29570135746606) * d + 348.873303167421) * d
-                - 12028.0542986425;
+        return ((9.33333333333333e-4 * d - 0.36) * d + 51.6666666666667) * d + 1700.0;
     }
 
     /**
      * Hood pitch servo position [0.0 .. 1.0] for a given distance to the aim target in centimetres.
-     * Cubic through (115,0.310) (150,0.172) (180,0.000) (200,0.000) — Horner form.
+     * Cubic through (50,0.611) (100,0.161) (150,0.000) (200,0.000) — Horner form.
      */
     public static double hoodPitch(double d) {
-        double p = ((1.67308769661711e-6 * d - 7.720698125404e-4) * d + 0.112023822452058) * d
-                - 4.90667356173238;
+        double p = ((-1.70666666666667e-7 * d + 1.09e-4) * d - 2.23633333333333e-2) * d + 1.478;
         return Math.max(0.0, Math.min(1.0, p));
     }
 }

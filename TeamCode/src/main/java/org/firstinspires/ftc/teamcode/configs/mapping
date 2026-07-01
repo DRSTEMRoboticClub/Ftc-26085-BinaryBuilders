@@ -19,3 +19,12 @@ left bumper: if autoaim is not on, start the launcher motors with the near posit
 right bumper: if autoaim is not on, start the launcher motors with the far position rpm
 right trigger: shoot
 left arrow keys: left-right: increase/decrease the near position rpm. up-down: increase/decrease the far position rpm
+
+
+
+TELEMETRY:
+Line 1: Team colour
+Line 2: LL ON/OFF | DISTANCE | FPS | TEMPERATURE | TAGS: Tags currently visible
+Line 3: HOOD: Hood pitch| CRPM: Current RPM | NEAR | FAR | MANUAL | POLYNOMIAL
+Line 4: TURRET: Encoder angle
+Line 5: Robot pose via localisation 

@@ -205,7 +205,7 @@ public class LimelightManager {
 
     /**
      * 3D pose of the tag in camera space (Limelight's native output).
-     * Axes: +X right, +Y down, +Z forward (into the scene).
+     * Axes: +X right, +Y up, +Z forward (into the scene).
      * Returns null if the tag is not visible or 3D pose is unavailable.
      */
     public Pose3D getTagCamSpacePose(int tagId) {
@@ -215,15 +215,19 @@ public class LimelightManager {
 
     /**
      * Planar (floor-plane) distance from the camera to the tag in centimetres.
-     * Computed from the camera-space X and Z components.
+     * Projects camera-space coordinates onto the horizontal plane, accounting for
+     * the camera's upward mount tilt (ShooterConfig.CAMERA_TILT_DEG).
      * Returns -1 if the tag is not visible or pose data is unavailable.
      */
     public double getTagDistanceCm(int tagId) {
         Pose3D cam = getTagCamSpacePose(tagId);
         if (cam == null) return -1;
         double xRight = cam.getPosition().toUnit(DistanceUnit.CM).x;
+        double yUp    = cam.getPosition().toUnit(DistanceUnit.CM).y;
         double zFwd   = cam.getPosition().toUnit(DistanceUnit.CM).z;
-        return Math.hypot(xRight, zFwd);
+        double tilt   = Math.toRadians(ShooterConfig.CAMERA_TILT_DEG);
+        double hFwd   = zFwd * Math.cos(tilt) - yUp * Math.sin(tilt);
+        return Math.hypot(xRight, hFwd);
     }
 
     /**
