@@ -52,7 +52,7 @@ public class AutoBlueNear extends LinearOpMode {
     public static long   SHOOT_FIRE_MS        = 1000;
     public static double SHOOT_RPM_TOLERANCE  = 400.0;
     /** Safety-net wait after arriving — shooter is already at speed so this rarely triggers. */
-    public static long   SHOOT_SPINUP_TIMEOUT_MS      = 0;
+    public static long   SHOOT_SPINUP_TIMEOUT_MS      = 3000;
     public static long   SHOOT_TURRET_LOCK_TIMEOUT_MS = 1000;
 
     // ── Intake ─────────────────────────────────────────────────────────────────
@@ -72,6 +72,7 @@ public class AutoBlueNear extends LinearOpMode {
     private int      step           = 0;
     private long     stateEnteredMs = 0;
     private boolean  finalPath      = false;
+    private boolean  polynomialActive = false;
 
     private boolean turretTrackingEnabled = false;
 
@@ -103,6 +104,7 @@ public class AutoBlueNear extends LinearOpMode {
 
         // Spin up immediately — the flywheel runs the entire auto.
         shooter.setShooterVelocityRpm(SHOOT_RPM);
+        polynomialActive = true;
         enterStep();
 
         while (opModeIsActive() && !isStopRequested()) {
@@ -115,6 +117,20 @@ public class AutoBlueNear extends LinearOpMode {
                 case SHOOTING:    tickShooting();    break;
                 case INTAKE_WAIT: tickIntakeWait();  break;
                 case DONE:                           break;
+            }
+
+            if (polynomialActive && ShooterConfig.USE_DISTANCE_COMPENSATION) {
+                double dist = shooter.getTrackedTagDistanceCm();
+                if (dist > 0) {
+                    double d = Math.max(ShooterConfig.MIN_COMP_DISTANCE,
+                                        Math.min(dist, ShooterConfig.MAX_COMP_DISTANCE));
+                    shooter.setAutoShootRpmOverride(ShooterConfig.hoodTuneAngle(d));
+                    hood.setPosition(ShooterConfig.hoodPitch(d));
+                } else {
+                    shooter.clearAutoShootRpmOverride();
+                }
+            } else {
+                shooter.clearAutoShootRpmOverride();
             }
 
             follower.update();
@@ -203,9 +219,11 @@ public class AutoBlueNear extends LinearOpMode {
     private void tickShooting() {
         long elapsed = System.currentTimeMillis() - stateEnteredMs;
         if (!shooterFired) {
-            boolean atSpeed  = Math.abs(shooter.getShooterVelocityRpm() - SHOOT_RPM) < SHOOT_RPM_TOLERANCE;
-            boolean timedOut = elapsed > SHOOT_SPINUP_TIMEOUT_MS;
-            if (atSpeed || timedOut) {
+            boolean atSpeed     = Math.abs(shooter.getShooterVelocityRpm() - SHOOT_RPM) < SHOOT_RPM_TOLERANCE;
+            boolean timedOut    = elapsed > SHOOT_SPINUP_TIMEOUT_MS;
+            boolean hasTag      = shooter.getTrackedTagTx() != null;
+            boolean turretReady = !hasTag || shooter.isTurretLocked() || elapsed > SHOOT_TURRET_LOCK_TIMEOUT_MS;
+            if (timedOut || (atSpeed && turretReady)) {
                 shooter.setStopperPosition(ShooterConfig.STOPPER_OPEN);
                 intake.setPower(INTAKE_POWER);
                 shooterFired = true;

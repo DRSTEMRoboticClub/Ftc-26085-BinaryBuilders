@@ -29,21 +29,20 @@ public class AutoRedNear extends LinearOpMode {
     private static final Pose SHOOT_START  = new Pose( 88.500,  88.000, HEADING);
     private static final Pose BALL1_SWEEP  = new Pose(102.500,  77.000, HEADING);
     private static final Pose BALL1        = new Pose(115.500,  77.000, HEADING);
-    private static final Pose BALL2_SWEEP  = new Pose(93.500,  47.000, HEADING);
-    private static final Pose BALL2        = new Pose(127.000,  47.000, 15);
+    private static final Pose BALL2_SWEEP  = new Pose(93.500,  48.000,  HEADING);
+    private static final Pose BALL2        = new Pose(127.000,  48.000, HEADING);
     private static final Pose FINAL        = new Pose(128.500,  88.000, HEADING);
     private static final Pose SHOOT        = new Pose( 91.500,  83.000, HEADING);
-    // RELEASE heading mirrors 165° → 15° (π - 165° = 15°)
     private static final Pose RELEASE      = new Pose(125.000,  62.500, HEADING);
 
     public static int RELEASE_LOOPS = 0;
 
     // ── Shooter constants (tune from FTC Dashboard) ────────────────────────────
-    public static double SHOOT_RPM            = 3950.0;
-    public static double SHOOT_HOOD_POS       = 0.30;
+    public static double SHOOT_RPM            = 4050.0;
+    public static double SHOOT_HOOD_POS       = 0.24;
     public static long   SHOOT_FIRE_MS        = 1000;
     public static double SHOOT_RPM_TOLERANCE  = 400.0;
-    public static long   SHOOT_SPINUP_TIMEOUT_MS      = 0;
+    public static long   SHOOT_SPINUP_TIMEOUT_MS      = 3000;
     public static long   SHOOT_TURRET_LOCK_TIMEOUT_MS = 1000;
 
     // ── Intake ─────────────────────────────────────────────────────────────────
@@ -63,6 +62,7 @@ public class AutoRedNear extends LinearOpMode {
     private int      step           = 0;
     private long     stateEnteredMs = 0;
     private boolean  finalPath      = false;
+    private boolean  polynomialActive = false;
 
     private boolean turretTrackingEnabled = false;
 
@@ -91,6 +91,7 @@ public class AutoRedNear extends LinearOpMode {
         if (isStopRequested()) return;
 
         shooter.setShooterVelocityRpm(SHOOT_RPM);
+        polynomialActive = true;
         enterStep();
 
         while (opModeIsActive() && !isStopRequested()) {
@@ -103,6 +104,20 @@ public class AutoRedNear extends LinearOpMode {
                 case SHOOTING:    tickShooting();    break;
                 case INTAKE_WAIT: tickIntakeWait();  break;
                 case DONE:                           break;
+            }
+
+            if (polynomialActive && ShooterConfig.USE_DISTANCE_COMPENSATION) {
+                double dist = shooter.getTrackedTagDistanceCm();
+                if (dist > 0) {
+                    double d = Math.max(ShooterConfig.MIN_COMP_DISTANCE,
+                                        Math.min(dist, ShooterConfig.MAX_COMP_DISTANCE));
+                    shooter.setAutoShootRpmOverride(ShooterConfig.hoodTuneAngle(d));
+                    hood.setPosition(ShooterConfig.hoodPitch(d));
+                } else {
+                    shooter.clearAutoShootRpmOverride();
+                }
+            } else {
+                shooter.clearAutoShootRpmOverride();
             }
 
             follower.update();
@@ -189,9 +204,11 @@ public class AutoRedNear extends LinearOpMode {
     private void tickShooting() {
         long elapsed = System.currentTimeMillis() - stateEnteredMs;
         if (!shooterFired) {
-            boolean atSpeed  = Math.abs(shooter.getShooterVelocityRpm() - SHOOT_RPM) < SHOOT_RPM_TOLERANCE;
-            boolean timedOut = elapsed > SHOOT_SPINUP_TIMEOUT_MS;
-            if (atSpeed || timedOut) {
+            boolean atSpeed     = Math.abs(shooter.getShooterVelocityRpm() - SHOOT_RPM) < SHOOT_RPM_TOLERANCE;
+            boolean timedOut    = elapsed > SHOOT_SPINUP_TIMEOUT_MS;
+            boolean hasTag      = shooter.getTrackedTagTx() != null;
+            boolean turretReady = !hasTag || shooter.isTurretLocked() || elapsed > SHOOT_TURRET_LOCK_TIMEOUT_MS;
+            if (timedOut || (atSpeed && turretReady)) {
                 shooter.setStopperPosition(ShooterConfig.STOPPER_OPEN);
                 intake.setPower(INTAKE_POWER);
                 shooterFired = true;
@@ -248,8 +265,10 @@ public class AutoRedNear extends LinearOpMode {
                 .addPath(new BezierLine(SHOOT, BALL2_SWEEP))
                 .setConstantHeadingInterpolation(HEADING)
                 .addPath(new BezierLine(BALL2_SWEEP, BALL2))
-                .setConstantHeadingInterpolation(Math.toRadians(15))
-                .addPath(new BezierLine(BALL2, SHOOT))
+                .setConstantHeadingInterpolation(HEADING)
+                .addPath(new BezierLine(BALL2, BALL2_SWEEP))
+                .setConstantHeadingInterpolation(HEADING)
+                .addPath(new BezierLine(BALL2_SWEEP, SHOOT))
                 .setConstantHeadingInterpolation(HEADING)
                 .build();
     }
