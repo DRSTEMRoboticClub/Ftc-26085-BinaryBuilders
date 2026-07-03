@@ -222,9 +222,11 @@ public class LimelightManager {
     public double getTagDistanceCm(int tagId) {
         Pose3D cam = getTagCamSpacePose(tagId);
         if (cam == null) return -1;
-        double xRight = cam.getPosition().toUnit(DistanceUnit.CM).x;
-        double yUp    = cam.getPosition().toUnit(DistanceUnit.CM).y;
-        double zFwd   = cam.getPosition().toUnit(DistanceUnit.CM).z;
+        var pos = cam.getPosition();
+        if (pos == null) return -1;  // 3D pose unavailable for this tag
+        double xRight = pos.toUnit(DistanceUnit.CM).x;
+        double yUp    = pos.toUnit(DistanceUnit.CM).y;
+        double zFwd   = pos.toUnit(DistanceUnit.CM).z;
         double tilt   = Math.toRadians(ShooterConfig.CAMERA_TILT_DEG);
         double hFwd   = zFwd * Math.cos(tilt) - yUp * Math.sin(tilt);
         return Math.hypot(xRight, hFwd);

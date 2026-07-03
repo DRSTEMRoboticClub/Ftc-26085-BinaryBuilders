@@ -777,17 +777,20 @@ public class ShooterSubsystem extends SubsystemBase {
     private double[] computeTargetCameraSpace(LLResultTypes.FiducialResult f) {
         try {
             Pose3D pose = f.getTargetPoseCameraSpace();
-            if (pose == null || pose.getPosition() == null || pose.getOrientation() == null)
-                return null;
+            if (pose == null) return null;
+            
+            var pos = pose.getPosition();
+            var ori = pose.getOrientation();
+            if (pos == null || ori == null) return null;
 
-            double tx = pose.getPosition().toUnit(DistanceUnit.CM).x;
-            double ty = pose.getPosition().toUnit(DistanceUnit.CM).y;
-            double tz = Math.abs(pose.getPosition().toUnit(DistanceUnit.CM).z); // positive = in front
-            if (tz < 1.0) return null; // sanity check — tag at 0 depth is bad data
+            double tx = pos.toUnit(DistanceUnit.CM).x;
+            double ty = pos.toUnit(DistanceUnit.CM).y;
+            double tz = Math.abs(pos.toUnit(DistanceUnit.CM).z); // positive = in front
+            if (tz < 1.0 || Double.isNaN(tz)) return null; // sanity check — tag at 0 depth or bad data
 
-            double yaw   = Math.toRadians(pose.getOrientation().getYaw(AngleUnit.DEGREES));
-            double pitch = Math.toRadians(pose.getOrientation().getPitch(AngleUnit.DEGREES));
-            double roll  = Math.toRadians(pose.getOrientation().getRoll(AngleUnit.DEGREES));
+            double yaw   = Math.toRadians(ori.getYaw(AngleUnit.DEGREES));
+            double pitch = Math.toRadians(ori.getPitch(AngleUnit.DEGREES));
+            double roll  = Math.toRadians(ori.getRoll(AngleUnit.DEGREES));
 
             // Rotation matrix R (tag frame → camera frame), ZYX Euler: R = Rz(yaw)·Ry(pitch)·Rx(roll)
             double cy = Math.cos(yaw),   sy = Math.sin(yaw);
@@ -831,21 +834,24 @@ public class ShooterSubsystem extends SubsystemBase {
     private double distanceFromFiducial(LLResultTypes.FiducialResult f) {
         try {
             Pose3D camSpace = f.getTargetPoseCameraSpace();
-            if (camSpace != null && camSpace.getPosition() != null) {
-                double xRight = camSpace.getPosition().toUnit(DistanceUnit.CM).x; // +right
-                double yUp    = camSpace.getPosition().toUnit(DistanceUnit.CM).y; // +up
-                double zFwd   = camSpace.getPosition().toUnit(DistanceUnit.CM).z; // +forward
-                // Camera is mounted 15° upward, so project camera Z onto the horizontal plane:
-                // floor_forward = zFwd·cos(tilt) − yUp·sin(tilt)
-                double tilt = Math.toRadians(ShooterConfig.CAMERA_TILT_DEG);
-                double hFwd = zFwd * Math.cos(tilt) - yUp * Math.sin(tilt);
-                double d = Math.hypot(xRight, hFwd);
-                if (d > 0 && !Double.isNaN(d) && !Double.isInfinite(d)) {
-                    cachedTagXCm = xRight;
-                    cachedTagYCm = yUp;
-                    cachedTagZCm = zFwd;
-                    cachedDistSource = "3D";
-                    return d;
+            if (camSpace != null) {
+                var pos = camSpace.getPosition();
+                if (pos != null) {
+                    double xRight = pos.toUnit(DistanceUnit.CM).x; // +right
+                    double yUp    = pos.toUnit(DistanceUnit.CM).y; // +up
+                    double zFwd   = pos.toUnit(DistanceUnit.CM).z; // +forward
+                    // Camera is mounted 15° upward, so project camera Z onto the horizontal plane:
+                    // floor_forward = zFwd·cos(tilt) − yUp·sin(tilt)
+                    double tilt = Math.toRadians(ShooterConfig.CAMERA_TILT_DEG);
+                    double hFwd = zFwd * Math.cos(tilt) - yUp * Math.sin(tilt);
+                    double d = Math.hypot(xRight, hFwd);
+                    if (d > 0 && !Double.isNaN(d) && !Double.isInfinite(d)) {
+                        cachedTagXCm = xRight;
+                        cachedTagYCm = yUp;
+                        cachedTagZCm = zFwd;
+                        cachedDistSource = "3D";
+                        return d;
+                    }
                 }
             }
         } catch (Throwable ignored) { }
