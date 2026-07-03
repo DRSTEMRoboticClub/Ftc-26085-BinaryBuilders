@@ -54,6 +54,17 @@ public class ShooterConfig {
     // ignored. Set to 0 to disable holding. Tune via Dashboard.
     public static long TAG_HOLD_MS = 300;
 
+    // Max age (ms) of an LLResult's own capture timestamp (LLResult.getStaleness()) before we
+    // treat it as a dead/frozen frame instead of a live detection. isValid() only reflects
+    // whether that particular JSON blob parsed correctly — it says nothing about whether the
+    // Limelight has actually produced a NEW frame since the last read. If the camera/pipeline
+    // hangs (USB hiccup, frozen detector) getLatestResult() can keep returning the same old
+    // result object forever, isValid()==true, fiducials still populated — so without this check
+    // we would keep reporting a perfectly plausible "sees tag, has distance" that is actually
+    // frozen from before the hang. Tune via Dashboard if the LL's own capture-to-read pipeline
+    // is legitimately slower than this on your hardware.
+    public static long LL_STALE_THRESHOLD_MS = 500;
+
     // (Distance-ramped RPM boost removed — the shooter now uses the raw polynomial RPM with
     //  no added percentage. Re-add a multiplier here only if shots come up consistently short.)
 
@@ -83,17 +94,17 @@ public class ShooterConfig {
     public static double TARGET_ABOVE_CM  = 15.0;  // cm above the tag centre (upward)
 
     public static double STOPPER_CLOSED = 0.0;
-    public static double STOPPER_OPEN = 0.45;
+    public static double STOPPER_OPEN = 0.43;
 
     // Shooter Motor PID
-    public static double SHOOTER_P = 0.001;
+    public static double SHOOTER_P = 0.1;
     public static double SHOOTER_I = 0.0;
     public static double SHOOTER_D = 0.0001;
 
     // Maximum power increase per loop iteration for the launcher motors.
     // Limits inrush current on spin-up to prevent brownouts.
     // 0.04 reaches full power in ~25 loops (~0.5s at 50 Hz). Tune via FTC Dashboard.
-    public static double LAUNCHER_RAMP_RATE = 0.04;
+    public static double LAUNCHER_RAMP_RATE = 0.08;
 
     // Shooter Target
     public static double SHOOTER_POWER = 0.80;

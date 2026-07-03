@@ -26,6 +26,7 @@ public class ShooterSubsystem extends SubsystemBase {
     private final DcMotorEx turretRotation; // ShooterMotor - rotates turret left/right
     private final Servo stopper;
     private final Limelight3A limelight;
+    private final HardwareMap hardwareMap; // kept for re-uploading the bundled pipeline on retry
 
     private boolean autoAimEnabled = true;
     private double targetShooterRpm = 0.0;
@@ -80,6 +81,8 @@ public class ShooterSubsystem extends SubsystemBase {
     // Diagnostics (cached so they survive cachedResult being released each loop in TeleOp).
     private int     cachedFiducialCount = 0;   // how many AprilTags the last read saw at all
     private boolean cachedResultValid = false; // LLResult.isValid() from the last read
+    private long    cachedStalenessMs = 0;     // LLResult.getStaleness() from the last read
+    private boolean cachedResultStale = false; // true when cachedStalenessMs exceeded the threshold
     private int     cachedTrackedId = -1;      // the fiducial id we actually locked onto (-1 = none)
     private String  cachedDistSource = "none"; // "3D", "TY", or "none" — where cachedDistCm came from
     private String  llPipelineStatus = "not uploaded"; // result of the init pipeline upload
@@ -122,6 +125,7 @@ public class ShooterSubsystem extends SubsystemBase {
     private double lastLauncherPower = 0.0;
 
     public ShooterSubsystem(HardwareMap hMap) {
+        hardwareMap = hMap;
         launcherLeft = hMap.get(DcMotorEx.class, HardwareConfig.LAUNCHER_LEFT_NAME);
         launcherRight = hMap.get(DcMotorEx.class, HardwareConfig.LAUNCHER_RIGHT_NAME);
         turretRotation = hMap.get(DcMotorEx.class, HardwareConfig.TURRET_ROTATION_NAME);
@@ -203,11 +207,18 @@ public class ShooterSubsystem extends SubsystemBase {
     public void cacheLimelightResult() {
         if (!limelightStarted) {
             // Retry starting the LL every 2 s in case it wasn't ready on USB at init time.
+            // Must re-upload the bundled pipeline here too (not just at construction) — otherwise
+            // a retry after a failed/skipped init leaves the LL on whatever pipeline was already
+            // on the device (e.g. a stale one from a prior session with 3D pose disabled), which
+            // switches to slot 0 but never re-flashes it to our known-good AprilTags.vpr config.
+            // That produces exactly "sees a tag but no distance": 2D detection still works on
+            // almost any AprilTag pipeline, but 3D pose only works if fiducial_skip3d:0 is set.
             if (limelight != null && ShooterConfig.LIMELIGHT_ENABLED) {
                 long now = System.currentTimeMillis();
                 if (now - lastLLUpdateMs >= 2000) {
                     lastLLUpdateMs = now;
                     try {
+                        uploadBundledPipeline(hardwareMap);
                         limelight.pipelineSwitch(ShooterConfig.APRILTAG_PIPELINE);
                         limelight.start();
                         limelightStarted = true;
@@ -264,10 +275,18 @@ public class ShooterSubsystem extends SubsystemBase {
         // Always refresh the "what does the camera see right now" diagnostics.
         if (result == null) {
             cachedResultValid = false;
+            cachedResultStale = false;
+            cachedStalenessMs = 0;
             cachedFiducialCount = 0;
             cachedVisibleTagIds = "none";
         } else {
             cachedResultValid = result.isValid();
+            // isValid() only reflects whether this JSON blob parsed correctly — NOT whether it is
+            // a fresh capture. If the LL hangs, getLatestResult() can keep handing back the same
+            // old (still "valid") result forever. Treat an old capture as if nothing new came in
+            // so we don't report a frozen tag lock/distance as if it were live.
+            cachedStalenessMs = result.getStaleness();
+            cachedResultStale = cachedStalenessMs > ShooterConfig.LL_STALE_THRESHOLD_MS;
             List<LLResultTypes.FiducialResult> fids = result.getFiducialResults();
             if (fids == null || fids.isEmpty()) {
                 cachedFiducialCount = 0;
@@ -288,7 +307,10 @@ public class ShooterSubsystem extends SubsystemBase {
                 cachedVisibleTagIds = ids.toString();
 
                 // Prefer the configured tag; fall back to nearest only if explicitly allowed.
-                LLResultTypes.FiducialResult use = (tracked != null) ? tracked
+                // Telemetry above should still say which IDs are present in the last LLResult,
+                // but stale frames must not refresh the live lock/distance used by auto-aim.
+                LLResultTypes.FiducialResult use = cachedResultStale ? null
+                        : (tracked != null) ? tracked
                         : (ShooterConfig.TRACK_ANY_TAG ? largest : null);
                 if (use != null) {
                     cachedTrackedId = use.getFiducialId();
@@ -483,6 +505,7 @@ public class ShooterSubsystem extends SubsystemBase {
             ShooterConfig.LIMELIGHT_ENABLED = false;
         } else {
             try {
+                uploadBundledPipeline(hardwareMap);
                 limelight.pipelineSwitch(ShooterConfig.APRILTAG_PIPELINE);
                 limelight.start();
                 limelightStarted = true;
@@ -793,10 +816,17 @@ public class ShooterSubsystem extends SubsystemBase {
     }
 
     /**
-     * Camera-to-tag distance (cm) for a single fiducial, taken ONLY from the Limelight's
-     * inbuilt 3D pose (SolvePnP). Also populates cachedTagXCm/YCm/ZCm so the caller can
-     * compute target-point corrections. Pipeline must have 3D enabled (fiducial_skip3d:0).
-     * Returns -1 if the 3D pose is unavailable (clears the component fields to NaN).
+     * Camera-to-tag distance (cm) for a single fiducial. Prefers the Limelight's inbuilt 3D
+     * pose (SolvePnP), which also populates cachedTagXCm/YCm/ZCm for target-point corrections.
+     * Pipeline must have 3D enabled (fiducial_skip3d:0).
+     *
+     * Falls back to a simple TY/trig estimate (CAMERA_HEIGHT_CM, TAG_CENTER_HEIGHT_CM,
+     * CAMERA_TILT_DEG) when the 3D pose is unavailable — e.g. the LL has no camera calibration
+     * for the pipeline's current resolution, so it still reports 2D fiducial detections (tx/ty)
+     * but returns a null/invalid pose. Without this, a tag the LL clearly sees produces no
+     * distance at all and the polynomial never engages.
+     *
+     * Returns -1 if neither method produces a usable distance (clears the component fields to NaN).
      */
     private double distanceFromFiducial(LLResultTypes.FiducialResult f) {
         try {
@@ -819,6 +849,28 @@ public class ShooterSubsystem extends SubsystemBase {
                 }
             }
         } catch (Throwable ignored) { }
+
+        // 3D pose unavailable this frame — fall back to TY-based trig distance.
+        try {
+            double tyDeg = f.getTargetYDegrees();
+            double totalAngleRad = Math.toRadians(ShooterConfig.CAMERA_TILT_DEG + tyDeg);
+            double heightDeltaCm = ShooterConfig.TAG_CENTER_HEIGHT_CM - ShooterConfig.CAMERA_HEIGHT_CM;
+            // Horizontal (floor-plane) distance from camera to the point under the tag:
+            // heightDelta = hFwd * tan(cameraTilt + ty)  =>  hFwd = heightDelta / tan(...)
+            if (Math.abs(totalAngleRad) > 1e-6) {
+                double hFwd = heightDeltaCm / Math.tan(totalAngleRad);
+                double txRad = Math.toRadians(f.getTargetXDegrees());
+                double d = hFwd / Math.cos(txRad);
+                if (d > 0 && !Double.isNaN(d) && !Double.isInfinite(d)) {
+                    cachedTagXCm = d * Math.sin(txRad);
+                    cachedTagYCm = heightDeltaCm;
+                    cachedTagZCm = hFwd;
+                    cachedDistSource = "TY";
+                    return d;
+                }
+            }
+        } catch (Throwable ignored) { }
+
         cachedTagXCm = Double.NaN;
         cachedTagYCm = Double.NaN;
         cachedTagZCm = Double.NaN;
@@ -876,8 +928,9 @@ public class ShooterSubsystem extends SubsystemBase {
         if (!limelightStarted) return "LL not started (toggled off? USB?)";
         // Built from cached primitives so it works in TeleOp, where cachedResult is released
         // each loop. Shows exactly why there may be no lock OR no distance.
-        return String.format("fids=%d valid=%b ids=[%s] track=%d lock=%d rawTx=%.1f tx=%.1f dist=%.0f(%s)%s",
-                cachedFiducialCount, cachedResultValid, cachedVisibleTagIds,
+        return String.format("fids=%d valid=%b age=%dms%s ids=[%s] track=%d lock=%d rawTx=%.1f tx=%.1f dist=%.0f(%s)%s",
+                cachedFiducialCount, cachedResultValid, cachedStalenessMs,
+                cachedResultStale ? " STALE!" : "", cachedVisibleTagIds,
                 ShooterConfig.TRACKED_TAG_ID, cachedTrackedId,
                 Double.isNaN(cachedRawTxDeg) ? 0.0 : cachedRawTxDeg,
                 Double.isNaN(cachedTxDeg) ? 0.0 : cachedTxDeg,

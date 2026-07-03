@@ -259,6 +259,7 @@ public class TeleOpBlue extends CommandOpMode {
         telemetry.addLine(String.format(
                 "LL: %-3s  │  Dist: %-12s  │  FPS: %2d  Temp: %.0f°C  │  Tags: [%s]",
                 llOn, distStr, shooter.getLimelightFps(), shooter.getLimelightTempC(), tagsStr));
+        telemetry.addLine(shooter.getLimelightDebugInfo());
 
         // ── Line 3: Hood + RPM ────────────────────────────────────────────────
         double actualRpm = (shooter.getLeftShooterRpm() + shooter.getRightShooterRpm()) / 2.0;
