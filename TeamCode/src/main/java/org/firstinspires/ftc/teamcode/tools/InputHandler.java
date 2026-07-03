@@ -15,6 +15,8 @@ public class InputHandler {
     private final Map<String, Long> nextRepeatTimesMs = new HashMap<>();
 
     private double lastForward, lastStrafe, lastTurn;
+    private long shootingStartMs = 0;
+    private boolean wasShootingPrev = false;
 
     public InputHandler(GamepadEx g1, GamepadEx g2) {
         this.g1 = g1;
@@ -130,19 +132,23 @@ public class InputHandler {
         }
         shooter.updatePID();
 
+        long now = System.currentTimeMillis();
+
         // Right Trigger: shoot (open stopper + feed intake); takes priority over plain intake
         boolean shooting = g2.getTrigger(GamepadKeys.Trigger.RIGHT_TRIGGER) > ControlsConfig.TRIGGER_THRESHOLD;
         if (shooting) {
+            if (!wasShootingPrev) shootingStartMs = now;
             shooter.setStopperPosition(ShooterConfig.STOPPER_OPEN);
-            intake.setPower(IntakeConfig.INTAKE_FWD_POWER);
+            boolean intakeReady = (now - shootingStartMs) >= ShootZoneConfig.SHOT_INTAKE_DELAY_MS;
+            intake.setPower(intakeReady ? IntakeConfig.INTAKE_FWD_POWER : 0);
         } else {
             shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
             intake.setPower(intaking ? IntakeConfig.INTAKE_FWD_POWER : 0);
         }
+        wasShootingPrev = shooting;
 
         // ── G2 Y/X: calibration RPM tuning (used with A neutral shot) ───────────
         // Y = raise CALIBRATION_RPM, X = lower it
-        long now = System.currentTimeMillis();
         if (shouldStep("g2_y", g2.gamepad.y, g2.wasJustPressed(GamepadKeys.Button.Y), now)) {
             ShooterConfig.CALIBRATION_RPM = Math.min(ShooterConfig.MAX_LAUNCHER_RPM,
                     ShooterConfig.CALIBRATION_RPM + ShooterConfig.RPM_TUNE_STEP_COARSE);

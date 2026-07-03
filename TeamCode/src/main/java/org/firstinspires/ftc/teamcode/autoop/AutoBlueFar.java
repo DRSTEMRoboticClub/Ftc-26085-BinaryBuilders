@@ -119,6 +119,7 @@ public class AutoBlueFar extends LinearOpMode {
 
     // Turret tracking — enabled only during SHOOTING and on the return leg of each ball path.
     private boolean turretTrackingEnabled = false;
+    private boolean intakeRunRequested    = false;
 
     private PIDController headingPid;
 
@@ -178,6 +179,8 @@ public class AutoBlueFar extends LinearOpMode {
                 shooter.clearAutoShootRpmOverride();
             }
 
+            applyIntakePower();
+
             follower.update();
             if (turretTrackingEnabled) {
                 shooter.holdTurretAtAngle(computeGoalTurretAngleDeg(GOAL));
@@ -229,13 +232,30 @@ public class AutoBlueFar extends LinearOpMode {
 
     private void advance() { step++; enterStep(); }
 
+    /**
+     * Runs intake at full power only once the shooter has reached target RPM;
+     * otherwise holds it so it doesn't push balls into the closed stopper while
+     * the flywheel is still spinning up (reduces stopper servo tension).
+     * SHOOTING manages intake directly via the fire sequence, so this is a no-op there.
+     */
+    private void applyIntakePower() {
+        if (state == FsmState.SHOOTING) return;
+        if (!intakeRunRequested) {
+            intake.setPower(IntakeConfig.INTAKE_HOLD_POWER);
+            return;
+        }
+        double targetRpm = shooter.getEffectiveTargetRpm();
+        boolean atSpeed = Math.abs(shooter.getShooterVelocityRpm() - targetRpm) < SHOOT_RPM_TOLERANCE;
+        intake.setPower(atSpeed ? INTAKE_POWER : IntakeConfig.INTAKE_HOLD_POWER);
+    }
+
     // ── WAIT ───────────────────────────────────────────────────────────────────
 
     private void enterWait() {
         state                 = FsmState.WAIT;
         waitStartMs           = System.currentTimeMillis();
         turretTrackingEnabled = false;
-        intake.setPower(IntakeConfig.INTAKE_HOLD_POWER);
+        intakeRunRequested    = false;
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
         shooter.setShooterVelocityRpm(SHOOT_RPM);
     }
@@ -249,7 +269,7 @@ public class AutoBlueFar extends LinearOpMode {
     private void enterIntakeWait() {
         state           = FsmState.INTAKE_WAIT;
         intakeWaitStart = System.currentTimeMillis();
-        intake.setPower(INTAKE_POWER);
+        intakeRunRequested = true;
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
         shooter.setShooterVelocityRpm(SHOOT_RPM);
         headingPid.reset();
@@ -267,8 +287,8 @@ public class AutoBlueFar extends LinearOpMode {
     private void enterPathing(PathChain chain, boolean runIntake) {
         state                 = FsmState.PATHING;
         turretTrackingEnabled = false;
+        intakeRunRequested    = runIntake;
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
-        intake.setPower(runIntake ? INTAKE_POWER : IntakeConfig.INTAKE_HOLD_POWER);
         hood.setPosition(SHOOT_HOOD_POS);
         shooter.setShooterVelocityRpm(SHOOT_RPM);
         runner.followPath(chain);
@@ -293,7 +313,7 @@ public class AutoBlueFar extends LinearOpMode {
         timedDriveFwd         = fwd;
         timedDriveStrafe      = strafe;
         timedDriveEndMs       = System.currentTimeMillis() + durationMs;
-        intake.setPower(runIntake ? INTAKE_POWER : IntakeConfig.INTAKE_HOLD_POWER);
+        intakeRunRequested    = runIntake;
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
         shooter.setShooterVelocityRpm(SHOOT_RPM);
         headingPid.reset();
@@ -317,6 +337,7 @@ public class AutoBlueFar extends LinearOpMode {
         shooterFired          = false;
         fireStartMs           = 0;
         turretTrackingEnabled = autoAim;
+        intakeRunRequested    = false;
         intake.setPower(IntakeConfig.INTAKE_HOLD_POWER);
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
         shooter.setShooterVelocityRpm(SHOOT_RPM);

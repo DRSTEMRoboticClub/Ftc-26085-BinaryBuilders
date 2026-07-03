@@ -173,10 +173,11 @@ public class ShooterConfig {
 
     /**
      * Flywheel target (RPM) for a given distance to the aim target in centimetres.
-     * Cubic through (50,3500) (100,4200) (150,4500) (200,5100) — Horner form.
+     * Cubic through (50,3500) (100,4200) (150,4500) (200,5200) — Horner form.
      */
     public static double hoodTuneAngle(double d) {
-        return ((9.33333333333333e-4 * d - 0.36) * d + 51.6666666666667) * d + 1700.0;
+        return ((4.91704374057315e-3 * d - 2.29570135746606) * d + 348.873303167421) * d
+                - 12028.0542986425;
     }
 
     /**
@@ -184,7 +185,8 @@ public class ShooterConfig {
      * Cubic through (50,0.611) (100,0.161) (150,0.000) (200,0.000) — Horner form.
      */
     public static double hoodPitch(double d) {
-        double p = ((-1.70666666666667e-7 * d + 1.09e-4) * d - 2.23633333333333e-2) * d + 1.478;
+        double p = ((1.67308769661711e-6 * d - 7.720698125404e-4) * d + 0.112023822452058) * d
+                - 4.90667356173238;
         return Math.max(0.0, Math.min(1.0, p));
     }
 }

@@ -40,4 +40,9 @@ public class ShootZoneConfig {
     // ── RPM readiness threshold ───────────────────────────────────────────
     /** Flywheel must be within this many RPM of target before stopper will open. */
     public static double SHOOT_READY_RPM_TOLERANCE = 200.0;
+
+    // ── Manual shoot intake delay ─────────────────────────────────────────
+    /** Delay (ms) after the right trigger is pressed before the intake starts feeding.
+     *  Gives the flywheel time to recover RPM before the next ball enters. */
+    public static long SHOT_INTAKE_DELAY_MS = 100;
 }
