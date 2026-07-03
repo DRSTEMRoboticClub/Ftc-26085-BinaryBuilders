@@ -1,5 +1,7 @@
 package org.firstinspires.ftc.teamcode.tools;
 
+import android.util.Log;
+
 import com.qualcomm.hardware.limelightvision.LLResult;
 import com.qualcomm.hardware.limelightvision.LLResultTypes;
 import com.qualcomm.hardware.limelightvision.LLStatus;
@@ -221,9 +223,15 @@ public class LimelightManager {
      */
     public double getTagDistanceCm(int tagId) {
         Pose3D cam = getTagCamSpacePose(tagId);
-        if (cam == null) return -1;
+        if (cam == null) {
+            Log.w("LL_MANAGER", "getTagDistanceCm: Pose3D is NULL for tag " + tagId);
+            return -1;
+        }
         var pos = cam.getPosition();
-        if (pos == null) return -1;  // 3D pose unavailable for this tag
+        if (pos == null) {
+            Log.w("LL_MANAGER", "getTagDistanceCm: position is NULL for tag " + tagId + " (missing calibration)");
+            return -1;
+        }
         double xRight = pos.toUnit(DistanceUnit.CM).x;
         double yUp    = pos.toUnit(DistanceUnit.CM).y;
         double zFwd   = pos.toUnit(DistanceUnit.CM).z;

@@ -373,9 +373,22 @@ public class TeleOpRed extends CommandOpMode {
      * where the 360x240 resolution is no longer accurate enough for reliable shooter
      * compensation. Requires the localizer to have been seeded by at least one close-range
      * LL fix (localizerCalibrated = true) before this value is trusted.
+     * Returns -1 if the localizer is not available or has not yet computed a pose.
      */
     private double computeLocalizerDistanceCm() {
+        if (localizer == null) {
+            Log.w("TELE_RED", "computeLocalizerDistanceCm: localizer is NULL");
+            return -1;
+        }
         Pose2d pose = localizer.getPose();
+        if (pose == null) {
+            Log.w("TELE_RED", "computeLocalizerDistanceCm: pose is NULL");
+            return -1;
+        }
+        if (pose.position == null) {
+            Log.w("TELE_RED", "computeLocalizerDistanceCm: pose.position is NULL");
+            return -1;
+        }
         double dx = LocalizationConfig.RED_TAG_FIELD_X - pose.position.x;
         double dy = LocalizationConfig.RED_TAG_FIELD_Y - pose.position.y;
         return Math.hypot(dx, dy);

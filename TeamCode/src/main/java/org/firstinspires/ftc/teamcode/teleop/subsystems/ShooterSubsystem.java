@@ -1,5 +1,7 @@
 package org.firstinspires.ftc.teamcode.teleop.subsystems;
 
+import android.util.Log;
+
 import com.arcrobotics.ftclib.command.SubsystemBase;
 import com.arcrobotics.ftclib.controller.PIDController;
 import com.qualcomm.hardware.limelightvision.LLResult;
@@ -126,30 +128,75 @@ public class ShooterSubsystem extends SubsystemBase {
 
     public ShooterSubsystem(HardwareMap hMap) {
         hardwareMap = hMap;
-        launcherLeft = hMap.get(DcMotorEx.class, HardwareConfig.LAUNCHER_LEFT_NAME);
-        launcherRight = hMap.get(DcMotorEx.class, HardwareConfig.LAUNCHER_RIGHT_NAME);
-        turretRotation = hMap.get(DcMotorEx.class, HardwareConfig.TURRET_ROTATION_NAME);
-        stopper = hMap.get(Servo.class, HardwareConfig.STOPPER_NAME);
+        
+        // ── Hardware initialization with graceful degradation ────────────────────────
+        DcMotorEx ll = null, rr = null, tr = null;
+        Servo st = null;
+        try {
+            ll = hMap.get(DcMotorEx.class, HardwareConfig.LAUNCHER_LEFT_NAME);
+        } catch (Throwable t) {
+            Log.e("SHOOTER", "Failed to initialize launcher left: " + t.getMessage());
+        }
+        try {
+            rr = hMap.get(DcMotorEx.class, HardwareConfig.LAUNCHER_RIGHT_NAME);
+        } catch (Throwable t) {
+            Log.e("SHOOTER", "Failed to initialize launcher right: " + t.getMessage());
+        }
+        try {
+            tr = hMap.get(DcMotorEx.class, HardwareConfig.TURRET_ROTATION_NAME);
+        } catch (Throwable t) {
+            Log.e("SHOOTER", "Failed to initialize turret: " + t.getMessage());
+        }
+        try {
+            st = hMap.get(Servo.class, HardwareConfig.STOPPER_NAME);
+        } catch (Throwable t) {
+            Log.e("SHOOTER", "Failed to initialize stopper: " + t.getMessage());
+        }
+        
+        launcherLeft = ll;
+        launcherRight = rr;
+        turretRotation = tr;
+        stopper = st;
 
         // Motors share one shaft, so set opposite directions for matched wheel spin.
-        launcherLeft.setDirection(DcMotorEx.Direction.FORWARD);
-        launcherRight.setDirection(DcMotorEx.Direction.REVERSE);
-        launcherLeft.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-        launcherRight.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-        launcherLeft.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        launcherRight.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        launcherLeft.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
-        launcherRight.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
-        turretRotation.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        turretStartTicks = turretRotation.getCurrentPosition();
-
-        Limelight3A ll = null;
-        try {
-            ll = hMap.get(Limelight3A.class, HardwareConfig.LIMELIGHT_NAME);
-        } catch (Throwable t) {
-            ll = null;  // not in hardware map — run without it rather than failing init
+        if (launcherLeft != null) {
+            try {
+                launcherLeft.setDirection(DcMotorEx.Direction.FORWARD);
+                launcherLeft.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+                launcherLeft.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+                launcherLeft.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+            } catch (Throwable t) {
+                Log.e("SHOOTER", "Failed to configure launcher left: " + t.getMessage());
+            }
         }
-        limelight = ll;
+        if (launcherRight != null) {
+            try {
+                launcherRight.setDirection(DcMotorEx.Direction.REVERSE);
+                launcherRight.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+                launcherRight.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+                launcherRight.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+            } catch (Throwable t) {
+                Log.e("SHOOTER", "Failed to configure launcher right: " + t.getMessage());
+            }
+        }
+        if (turretRotation != null) {
+            try {
+                turretRotation.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+                turretStartTicks = turretRotation.getCurrentPosition();
+            } catch (Throwable t) {
+                Log.e("SHOOTER", "Failed to configure turret: " + t.getMessage());
+                turretStartTicks = 0;
+            }
+        } else {
+            turretStartTicks = 0;
+        }
+
+        Limelight3A ll_device = null;
+        try {
+            ll_device = hMap.get(Limelight3A.class, HardwareConfig.LIMELIGHT_NAME);
+        } catch (Throwable t) {
+            Log.w("SHOOTER", "Limelight not in hardware map: " + t.getMessage());
+        }
         // Only start the Limelight when enabled. When disabled, every read below short-circuits
         // on the null/started checks, so the rest of the OpMode behaves exactly the same.
         if (limelight != null && ShooterConfig.LIMELIGHT_ENABLED) {
@@ -777,11 +824,21 @@ public class ShooterSubsystem extends SubsystemBase {
     private double[] computeTargetCameraSpace(LLResultTypes.FiducialResult f) {
         try {
             Pose3D pose = f.getTargetPoseCameraSpace();
-            if (pose == null) return null;
+            if (pose == null) {
+                Log.w("SHOOTER", "computeTargetCameraSpace: Pose3D is NULL");
+                return null;
+            }
             
             var pos = pose.getPosition();
             var ori = pose.getOrientation();
-            if (pos == null || ori == null) return null;
+            if (pos == null) {
+                Log.w("SHOOTER", "computeTargetCameraSpace: position is NULL");
+                return null;
+            }
+            if (ori == null) {
+                Log.w("SHOOTER", "computeTargetCameraSpace: orientation is NULL");
+                return null;
+            }
 
             double tx = pos.toUnit(DistanceUnit.CM).x;
             double ty = pos.toUnit(DistanceUnit.CM).y;
@@ -852,7 +909,11 @@ public class ShooterSubsystem extends SubsystemBase {
                         cachedDistSource = "3D";
                         return d;
                     }
+                } else {
+                    Log.w("SHOOTER", "distanceFromFiducial: Pose3D.getPosition() returned NULL (missing camera calibration)");
                 }
+            } else {
+                Log.w("SHOOTER", "distanceFromFiducial: getTargetPoseCameraSpace() returned NULL");
             }
         } catch (Throwable ignored) { }
 
@@ -863,19 +924,32 @@ public class ShooterSubsystem extends SubsystemBase {
             double heightDeltaCm = ShooterConfig.TAG_CENTER_HEIGHT_CM - ShooterConfig.CAMERA_HEIGHT_CM;
             // Horizontal (floor-plane) distance from camera to the point under the tag:
             // heightDelta = hFwd * tan(cameraTilt + ty)  =>  hFwd = heightDelta / tan(...)
-            if (Math.abs(totalAngleRad) > 1e-6) {
-                double hFwd = heightDeltaCm / Math.tan(totalAngleRad);
+            // Defensive: check for edge cases (angle near ±90°, very small/large values)
+            double tanValue = Math.tan(totalAngleRad);
+            if (Math.abs(totalAngleRad) > 1e-6 && Math.abs(tanValue) > 1e-6 && !Double.isInfinite(tanValue) && !Double.isNaN(tanValue)) {
+                double hFwd = heightDeltaCm / tanValue;
                 double txRad = Math.toRadians(f.getTargetXDegrees());
-                double d = hFwd / Math.cos(txRad);
-                if (d > 0 && !Double.isNaN(d) && !Double.isInfinite(d)) {
-                    cachedTagXCm = d * Math.sin(txRad);
-                    cachedTagYCm = heightDeltaCm;
-                    cachedTagZCm = hFwd;
-                    cachedDistSource = "TY";
-                    return d;
+                double cosValue = Math.cos(txRad);
+                if (!Double.isNaN(cosValue) && Math.abs(cosValue) > 1e-6) {
+                    double d = hFwd / cosValue;
+                    if (d > 0 && !Double.isNaN(d) && !Double.isInfinite(d)) {
+                        cachedTagXCm = d * Math.sin(txRad);
+                        cachedTagYCm = heightDeltaCm;
+                        cachedTagZCm = hFwd;
+                        cachedDistSource = "TY";
+                        return d;
+                    } else {
+                        Log.w("SHOOTER", "TY fallback: computed distance is invalid (NaN/Inf)");
+                    }
+                } else {
+                    Log.w("SHOOTER", "TY fallback: invalid cos value or angle edge case");
                 }
+            } else {
+                Log.w("SHOOTER", "TY fallback: invalid angle or tan value (angle too steep?)");
             }
-        } catch (Throwable ignored) { }
+        } catch (Throwable ignored) {
+            Log.w("SHOOTER", "TY fallback exception: " + ignored.getMessage());
+        }
 
         cachedTagXCm = Double.NaN;
         cachedTagYCm = Double.NaN;
