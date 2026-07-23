@@ -14,14 +14,14 @@ public class ShooterConfig {
     public static double TURRET_P             = 0.020;  // slightly above original; more output at small errors
     public static double TURRET_I             = 0.000;  // zero: integral winds up against the deadzone causing oscillation
     public static double TURRET_D             = 0.002;  // low: LL updates at 10 Hz; high D amplifies frame noise into jitter
-    public static double TURRET_MAX_POWER     = 0.5;   // cap — 45:1 reduction is already slow
+    public static double TURRET_MAX_POWER     = 0.95;   // cap — 45:1 reduction is already slow
     public static double TURRET_TOLERANCE_DEG = 1.5;   // tighter than original 3° but wide enough to avoid bang-bang jitter
     // Flip to +1.0 if the turret moves AWAY from the tag instead of toward it.
-    public static double TURRET_DIRECTION_SIGN = 1.0;
+    public static double TURRET_DIRECTION_SIGN = -1.0;
     // Counter-turn feed-forward: power added per degree of chassis heading change since last LL
     // frame. Keeps the turret locked on the tag while the robot is rotating between 10 Hz reads.
     // Flip to negative if the turret moves WITH the robot instead of against it.
-    public static double HEADING_FF_GAIN = 0.012;
+    public static double HEADING_FF_GAIN = 0.025;
     // Keep old name as alias so holdTurretAtAngle() still compiles
     public static double AUTO_AIM_DEADBAND_DEG = 1.5;
     public static double AUTO_AIM_P_GAIN       = 0.020;
@@ -93,8 +93,11 @@ public class ShooterConfig {
     public static double TARGET_BEHIND_CM = 20;  // cm behind the tag face (into the goal)
     public static double TARGET_ABOVE_CM  = 15.0;  // cm above the tag centre (upward)
 
-    public static double STOPPER_CLOSED = 0.0;
+    public static double STOPPER_CLOSED = 0.15;
     public static double STOPPER_OPEN = 0.43;
+
+    // Auto-shoot: RPM must be within this tolerance of target before firing
+    public static double AUTO_SHOOT_RPM_TOLERANCE = 200.0;
 
     // Shooter Motor PID
     public static double SHOOTER_P = 0.1;
@@ -184,20 +187,18 @@ public class ShooterConfig {
 
     /**
      * Flywheel target (RPM) for a given distance to the aim target in centimetres.
-     * Cubic through (50,3500) (100,4200) (150,4500) (200,5200) — Horner form.
+     * Quadratic through (68,200) (100,3800) (201,5200) — Horner form.
      */
     public static double hoodTuneAngle(double d) {
-        return ((4.91704374057315e-3 * d - 2.29570135746606) * d + 348.873303167421) * d
-                - 12028.0542986425;
+        return (-0.7417 * d + 237.10) * d - 12493.0;
     }
 
     /**
      * Hood pitch servo position [0.0 .. 1.0] for a given distance to the aim target in centimetres.
-     * Cubic through (50,0.611) (100,0.161) (150,0.000) (200,0.000) — Horner form.
+     * Quadratic through (68,0.5) (100,0.27) (201,0.2) — Horner form.
      */
     public static double hoodPitch(double d) {
-        double p = ((1.67308769661711e-6 * d - 7.720698125404e-4) * d + 0.112023822452058) * d
-                - 4.90667356173238;
+        double p = (0.00004884 * d - 0.015392) * d + 1.32085;
         return Math.max(0.0, Math.min(1.0, p));
     }
 }

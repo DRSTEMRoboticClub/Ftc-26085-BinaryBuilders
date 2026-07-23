@@ -58,7 +58,7 @@ public class LocalizationConfig {
      * = 360 / (ticks per motor rev * turret gear reduction).
      * Calibrate by commanding a known rotation and reading ticks.
      */
-    public static double TURRET_DEG_PER_TICK = 0.05;
+    public static double TURRET_DEG_PER_TICK = 0.0625;
 
     /** Sign so that a positive turret angle means turret rotated CCW (left). */
     public static double TURRET_ANGLE_SIGN = 1.0;
@@ -79,7 +79,7 @@ public class LocalizationConfig {
      * Turret cable-protection limit. When |turret angle from start| exceeds
      * this, the tracker unwinds the opposite way instead of continuing.
      */
-    public static double TURRET_FLIP_ANGLE = 360.0;
+    public static double TURRET_FLIP_ANGLE = 180.0;
 
     /** Hysteresis (deg) — flip drives until (FLIP_ANGLE - HYSTERESIS) on the other side. */
     public static double TURRET_FLIP_HYSTERESIS = 15.0;

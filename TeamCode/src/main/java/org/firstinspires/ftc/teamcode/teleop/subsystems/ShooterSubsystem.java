@@ -52,6 +52,10 @@ public class ShooterSubsystem extends SubsystemBase {
     private int    turretTicksAtLLUpdate  = 0;
     private double headingAtLLUpdate      = Double.NaN;
     private double currentRobotHeadingDeg = Double.NaN;
+    private double prevHeadingForFF       = Double.NaN; // previous heading for turret feed-forward
+    private double targetTurretWorldAngle = Double.NaN; // desired turret world angle for heading lock
+    private boolean turretManualActive    = false;      // true while G2 stick is deflected
+    private double prevHeadingHoldError   = 0;          // previous error for D-term damping
     // Full pose (Pedro field inches) — set via setRobotPose() every loop in auto modes.
     // When set, runTurretControl() compensates for translational displacement between LL reads
     // in addition to heading + turret rotation. If never set (TeleOp / heading-only callers),
@@ -197,6 +201,7 @@ public class ShooterSubsystem extends SubsystemBase {
         } catch (Throwable t) {
             Log.w("SHOOTER", "Limelight not in hardware map: " + t.getMessage());
         }
+        limelight = ll_device;
         // Only start the Limelight when enabled. When disabled, every read below short-circuits
         // on the null/started checks, so the rest of the OpMode behaves exactly the same.
         if (limelight != null && ShooterConfig.LIMELIGHT_ENABLED) {
@@ -440,6 +445,13 @@ public class ShooterSubsystem extends SubsystemBase {
         targetShooterRpm = Range.clip(rpm, -maxRpm, maxRpm);
     }
 
+    /** Bypasses PID and sets both launcher motors to maximum power for shooting. */
+    public void setMaxLauncherPower() {
+        lastLauncherPower = 1.0;
+        launcherLeft.setPower(1.0);
+        launcherRight.setPower(1.0);
+    }
+
     /** Must be called every loop iteration to drive the flywheel PID. */
     public void updatePID() {
         double target = (autoShootRpmOverride != 0.0) ? autoShootRpmOverride : targetShooterRpm;
@@ -614,6 +626,16 @@ public class ShooterSubsystem extends SubsystemBase {
         return lastTurretPower;
     }
 
+    /** Heading-lock target world angle (for telemetry debugging). */
+    public double getHeadingLockTarget() {
+        return Double.isNaN(targetTurretWorldAngle) ? 0 : targetTurretWorldAngle;
+    }
+
+    /** Heading-lock error (for telemetry debugging). */
+    public double getHeadingLockError() {
+        return prevHeadingHoldError;
+    }
+
     /** Corrected TX (degrees) to the configured target point (behind/above the tag). Null if no tag. */
     public Double getTrackedTagTx() {
         return Double.isNaN(cachedTxDeg) ? null : cachedTxDeg;
@@ -658,23 +680,72 @@ public class ShooterSubsystem extends SubsystemBase {
     }
 
     public void runTurretControl(double manualPower, boolean triggerActive) {
+        // ── Heading-lock: keep turret at a fixed world angle ─────────────────────
+        // When the robot turns, the turret counter-rotates to maintain its world heading.
+        // Uses HEADING_FF_GAIN as P-gain (tunable from FTC Dashboard, flip sign if wrong dir).
+        double headingHoldPower = 0;
+        if (!Double.isNaN(currentRobotHeadingDeg)) {
+            double currentWorldAngle = currentRobotHeadingDeg + getTurretAngleDeg();
+
+            // If user is manually controlling (or just released), update target to current
+            if (Math.abs(manualPower) > 0.01 || turretManualActive) {
+                targetTurretWorldAngle = currentWorldAngle;
+                prevHeadingHoldError = 0;
+            }
+            turretManualActive = Math.abs(manualPower) > 0.01;
+
+            // Initialize target on first run
+            if (Double.isNaN(targetTurretWorldAngle)) {
+                targetTurretWorldAngle = currentWorldAngle;
+            }
+
+            double error = normalizeDeg(targetTurretWorldAngle - currentWorldAngle);
+            if (Math.abs(error) > 3.0) { // deadband to avoid jitter
+                // P + D control (heading sign already corrected in TeleOp)
+                double dError = error - prevHeadingHoldError;
+                headingHoldPower = error * ShooterConfig.HEADING_FF_GAIN
+                        + dError * ShooterConfig.HEADING_FF_GAIN * 3.0; // D-term for damping
+                headingHoldPower = Range.clip(headingHoldPower, -0.4, 0.4);
+            }
+            prevHeadingHoldError = error;
+        }
+
         if (externalTurretControl) {
-            // TurretTracker owns auto-aim in LocalSysBase — only override on explicit D-pad.
             if (Math.abs(manualPower) > 0.01) {
                 double power = applyCableLimit(manualPower * ShooterConfig.TURRET_POWER_SCALE);
                 lastTurretPower = power;
                 turretRotation.setPower(power);
+            } else if (Math.abs(headingHoldPower) > 0.001) {
+                double power = applyCableLimit(headingHoldPower);
+                lastTurretPower = power;
+                turretRotation.setPower(power);
+            } else {
+                turretRotation.setPower(0);
+                lastTurretPower = 0;
             }
             return;
         }
 
         // ── Manual D-pad takes priority with instant response ────────────────────
         if (Math.abs(manualPower) > 0.01) {
-            turretPID.reset(); // clear I/D so they don't spike when auto-aim resumes
+            turretPID.reset();
             turretSearching = false;
             double power = applyCableLimit(manualPower * ShooterConfig.TURRET_POWER_SCALE);
             lastTurretPower = power;
             turretRotation.setPower(power);
+            return;
+        }
+
+        // If no manual input and auto-aim is off, hold world heading
+        if (!autoAimEnabled) {
+            if (Math.abs(headingHoldPower) > 0.001) {
+                double power = applyCableLimit(headingHoldPower);
+                lastTurretPower = power;
+                turretRotation.setPower(power);
+            } else {
+                turretRotation.setPower(0);
+                lastTurretPower = 0;
+            }
             return;
         }
 
@@ -781,9 +852,20 @@ public class ShooterSubsystem extends SubsystemBase {
      * limit. Returning toward the safe zone is always allowed.
      *
      * @param desired the power the controller wants to apply this loop
-     * @return the power to actually send to the motor (0 if it would push past the limit)
+     * @return the power to actually send to the motor (reversed if it would push past the limit)
      */
     private double applyCableLimit(double desired) {
+        double angleDeg = getTurretAngleDeg();
+        double limit = LocalizationConfig.TURRET_FLIP_ANGLE;
+
+        // If past +limit and trying to go further positive, reverse to unwind
+        if (angleDeg >= limit && desired > 0) {
+            return -Math.abs(desired);
+        }
+        // If past -limit and trying to go further negative, reverse to unwind
+        if (angleDeg <= -limit && desired < 0) {
+            return Math.abs(desired);
+        }
         return desired;
     }
 

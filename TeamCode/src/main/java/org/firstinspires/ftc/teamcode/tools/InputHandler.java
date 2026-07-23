@@ -10,7 +10,7 @@ import java.util.Map;
 
 public class InputHandler {
     private final GamepadEx g1, g2;
-    private boolean fieldCentric = true;       // G1 Y = field centric (default), G1 X = robot centric
+    private boolean fieldCentric = false;      // G1 X = robot centric (default), G1 Y = field centric
     private boolean shooterHoldMode = false;   // true while G2 left trigger is held (autoaim + spin-up)
     private final Map<String, Long> nextRepeatTimesMs = new HashMap<>();
 
@@ -65,12 +65,21 @@ public class InputHandler {
         // Right Bumper: slow mode while held
         drive.setSlowMode(g1.gamepad.right_bumper);
 
+        // Right Trigger: extremely slow mode while held (cable protection)
+        drive.setVerySlow(g1.gamepad.right_trigger > ControlsConfig.TRIGGER_THRESHOLD);
+
         // X: robot centric  |  Y: field centric
         if (g1.wasJustPressed(GamepadKeys.Button.X)) fieldCentric = false;
         if (g1.wasJustPressed(GamepadKeys.Button.Y)) fieldCentric = true;
 
-        // B: park (disable drive while held)
-        if (g1.gamepad.b) {
+        // ── Controller 2: Shooter / Turret / Hood ───────────────────────────
+
+        // Left Trigger: autoaim + start launcher while held (polynomial RPM via applyShooterCompensation)
+        shooterHoldMode = g2.getTrigger(GamepadKeys.Trigger.LEFT_TRIGGER) > ControlsConfig.TRIGGER_THRESHOLD;
+        shooter.setAutoAimEnabled(shooterHoldMode);
+
+        // When auto-aim is active, stop the robot (override controller 1 drive)
+        if (shooterHoldMode || g1.gamepad.b) {
             drive.stop();
             lastStrafe = 0; lastForward = 0; lastTurn = 0;
         } else {
@@ -84,15 +93,6 @@ public class InputHandler {
                 drive.driveRobotCentric(lastStrafe, lastForward, lastTurn);
             }
         }
-
-        // Left Trigger: intake while held
-        boolean intaking = g1.getTrigger(GamepadKeys.Trigger.LEFT_TRIGGER) > ControlsConfig.TRIGGER_THRESHOLD;
-
-        // ── Controller 2: Shooter / Turret / Hood ───────────────────────────
-
-        // Left Trigger: autoaim + start launcher while held (polynomial RPM via applyShooterCompensation)
-        shooterHoldMode = g2.getTrigger(GamepadKeys.Trigger.LEFT_TRIGGER) > ControlsConfig.TRIGGER_THRESHOLD;
-        shooter.setAutoAimEnabled(shooterHoldMode);
 
         // Right Joystick X: turret manual
         double turretManual = -g2.getRightX();
@@ -134,11 +134,26 @@ public class InputHandler {
 
         long now = System.currentTimeMillis();
 
-        // Right Trigger: shoot (open stopper + feed intake); takes priority over plain intake
-        boolean shooting = g2.getTrigger(GamepadKeys.Trigger.RIGHT_TRIGGER) > ControlsConfig.TRIGGER_THRESHOLD;
+        // Left Trigger (G1): intake while held
+        boolean intaking = g1.getTrigger(GamepadKeys.Trigger.LEFT_TRIGGER) > ControlsConfig.TRIGGER_THRESHOLD;
+
+        // Auto-shoot: when auto-aim is active, RPM is at target, and turret is locked → fire automatically
+        boolean autoShootReady = shooterHoldMode
+                && shooter.isTurretLocked()
+                && shooter.getEffectiveTargetRpm() > 0
+                && Math.abs(shooter.getShooterVelocityRpm() - shooter.getEffectiveTargetRpm()) < ShooterConfig.AUTO_SHOOT_RPM_TOLERANCE;
+
+        // Right Trigger: manual shoot (open stopper + feed intake + max launcher power)
+        boolean manualShooting = g2.getTrigger(GamepadKeys.Trigger.RIGHT_TRIGGER) > ControlsConfig.TRIGGER_THRESHOLD;
+        boolean shooting = manualShooting || autoShootReady;
+
         if (shooting) {
             if (!wasShootingPrev) shootingStartMs = now;
             shooter.setStopperPosition(ShooterConfig.STOPPER_OPEN);
+            // Full power unless motors exceed target by 500 RPM (prevent over-spin)
+            if (shooter.getShooterVelocityRpm() < shooter.getEffectiveTargetRpm() + 500) {
+                shooter.setMaxLauncherPower();
+            }
             boolean intakeReady = (now - shootingStartMs) >= ShootZoneConfig.SHOT_INTAKE_DELAY_MS;
             intake.setPower(intakeReady ? IntakeConfig.INTAKE_FWD_POWER : 0);
         } else {

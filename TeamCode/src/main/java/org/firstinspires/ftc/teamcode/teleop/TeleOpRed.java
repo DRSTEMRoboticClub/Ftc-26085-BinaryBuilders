@@ -199,7 +199,7 @@ public class TeleOpRed extends CommandOpMode {
 
                 // Feed live heading to the turret so it counter-rotates during chassis turns
                 // (heading feed-forward). Must run before inputHandler -> runTurretControl().
-                shooter.setRobotHeading(drive.getHeading());
+                shooter.setRobotHeading(-drive.getHeading());
 
                 inputHandler.update(drive, intake, shooter, hood);
 
@@ -297,6 +297,15 @@ public class TeleOpRed extends CommandOpMode {
                 "Turret: %+6.1f°  [%-5s]  │  %s  │  Ticks: %d  Flip@%.0f°%s",
                 turretDeg, turretSrc, txStr, shooter.getTurretTicks(),
                 LocalizationConfig.TURRET_FLIP_ANGLE, limitWarn));
+
+        // ── Heading-lock debug ────────────────────────────────────────────────
+        double robotH = -drive.getHeading();
+        double worldAngle = robotH + turretDeg;
+        telemetry.addLine(String.format(
+                "HeadLock │ Robot: %+.1f°  Turret: %+.1f°  World: %+.1f°  Target: %+.1f°  Err: %+.1f°  Pwr: %.3f",
+                robotH, turretDeg, worldAngle,
+                shooter.getHeadingLockTarget(), shooter.getHeadingLockError(),
+                shooter.getLastTurretPower()));
 
         // ── Line 6: Robot pose ────────────────────────────────────────────────
         telemetry.addLine(String.format(
