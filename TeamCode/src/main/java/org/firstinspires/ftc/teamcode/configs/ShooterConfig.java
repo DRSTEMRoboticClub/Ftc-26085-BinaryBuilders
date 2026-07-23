@@ -185,20 +185,42 @@ public class ShooterConfig {
     public static double TAG_CENTER_HEIGHT_CM = 75.0;
     public static double CAMERA_TILT_DEG      = 15.0;   // camera is tilted 15° upward from horizontal
 
-    /**
-     * Flywheel target (RPM) for a given distance to the aim target in centimetres.
-     * Quadratic through (68,200) (100,3800) (201,5200) — Horner form.
-     */
+    // ── Shoot lookup table: {distance_cm, rpm, hood_position} ─────────────────
+    // Add rows to calibrate more distances. Must be sorted by distance (ascending).
+    // Values outside the table are clamped to the nearest row.
+    public static double[][] SHOOT_TABLE = {
+        //  dist,   RPM,   hood
+        {   68,   2000,   0.50 },
+        {  100,   3800,   0.27 },
+        {  201,   5200,   0.20 },
+    };
+
+    /** Linearly interpolate RPM from the shoot table for a given distance (cm). */
     public static double hoodTuneAngle(double d) {
-        return (-0.7417 * d + 237.10) * d - 12493.0;
+        return lerpTable(d, 1);
+    }
+
+    /** Linearly interpolate hood position from the shoot table for a given distance (cm). */
+    public static double hoodPitch(double d) {
+        double p = lerpTable(d, 2);
+        return Math.max(0.0, Math.min(1.0, p));
     }
 
     /**
-     * Hood pitch servo position [0.0 .. 1.0] for a given distance to the aim target in centimetres.
-     * Quadratic through (68,0.5) (100,0.27) (201,0.2) — Horner form.
+     * Linear interpolation helper. Looks up column {@code col} (0=dist, 1=rpm, 2=hood)
+     * for a given distance. Clamps to first/last row outside the table range.
      */
-    public static double hoodPitch(double d) {
-        double p = (0.00004884 * d - 0.015392) * d + 1.32085;
-        return Math.max(0.0, Math.min(1.0, p));
+    private static double lerpTable(double d, int col) {
+        if (SHOOT_TABLE.length == 0) return 0;
+        if (d <= SHOOT_TABLE[0][0]) return SHOOT_TABLE[0][col];
+        for (int i = 1; i < SHOOT_TABLE.length; i++) {
+            if (d <= SHOOT_TABLE[i][0]) {
+                double d0 = SHOOT_TABLE[i - 1][0], d1 = SHOOT_TABLE[i][0];
+                double v0 = SHOOT_TABLE[i - 1][col], v1 = SHOOT_TABLE[i][col];
+                double t = (d - d0) / (d1 - d0);
+                return v0 + t * (v1 - v0);
+            }
+        }
+        return SHOOT_TABLE[SHOOT_TABLE.length - 1][col];
     }
 }

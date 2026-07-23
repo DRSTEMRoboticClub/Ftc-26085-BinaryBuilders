@@ -205,31 +205,46 @@ public class AutoBlueNear extends LinearOpMode {
 
     // ── SHOOTING ───────────────────────────────────────────────────────────────
 
+    private long autoAimLockedMs = 0;
+
     private void enterShooting() {
         state        = FsmState.SHOOTING;
         turretTrackingEnabled = true;
         shooterFired = false;
         fireStartMs  = 0;
+        autoAimLockedMs = 0;
         intake.setPower(IntakeConfig.INTAKE_HOLD_POWER);
-        hood.setPosition(SHOOT_HOOD_POS);
         shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
-        shooter.setShooterVelocityRpm(SHOOT_RPM);
+        shooter.setAutoAimEnabled(true);
     }
 
     private void tickShooting() {
-        long elapsed = System.currentTimeMillis() - stateEnteredMs;
+        long now = System.currentTimeMillis();
+        long elapsed = now - stateEnteredMs;
         if (!shooterFired) {
-            boolean atSpeed     = Math.abs(shooter.getShooterVelocityRpm() - SHOOT_RPM) < SHOOT_RPM_TOLERANCE;
+            double targetRpm = shooter.getEffectiveTargetRpm();
+            boolean atSpeed     = targetRpm > 0 && Math.abs(shooter.getShooterVelocityRpm() - targetRpm) < SHOOT_RPM_TOLERANCE;
+            boolean turretReady = shooter.isTurretLocked();
             boolean timedOut    = elapsed > SHOOT_SPINUP_TIMEOUT_MS;
-            boolean hasTag      = shooter.getTrackedTagTx() != null;
-            boolean turretReady = !hasTag || shooter.isTurretLocked() || elapsed > SHOOT_TURRET_LOCK_TIMEOUT_MS;
-            if (timedOut || (atSpeed && turretReady)) {
+
+            if (atSpeed && turretReady) {
+                if (autoAimLockedMs == 0) autoAimLockedMs = now;
+                if (now - autoAimLockedMs >= 2000) {
+                    shooter.setStopperPosition(ShooterConfig.STOPPER_OPEN);
+                    intake.setPower(INTAKE_POWER);
+                    shooterFired = true;
+                    fireStartMs  = now;
+                }
+            } else {
+                autoAimLockedMs = 0;
+            }
+            if (timedOut && !shooterFired) {
                 shooter.setStopperPosition(ShooterConfig.STOPPER_OPEN);
                 intake.setPower(INTAKE_POWER);
                 shooterFired = true;
-                fireStartMs  = System.currentTimeMillis();
+                fireStartMs  = now;
             }
-        } else if (System.currentTimeMillis() - fireStartMs >= SHOOT_FIRE_MS) {
+        } else if (now - fireStartMs >= SHOOT_FIRE_MS) {
             shooter.setStopperPosition(ShooterConfig.STOPPER_CLOSED);
             intake.setPower(IntakeConfig.INTAKE_HOLD_POWER);
             advance();
